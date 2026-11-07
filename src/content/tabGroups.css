@@ -1,0 +1,377 @@
+/*
+ * Tab Groups for Zotero — styles.
+ * Everything is scoped to attributes/classes the plugin adds (ztg-*), so
+ * Zotero's own tab styles keep working when the plugin is disabled.
+ */
+
+/* ---------------------------------------------------------------------
+ * Palette (Chrome's tab group colors)
+ * --ztg-c: group color  --ztg-fg: text on the colored chip
+ * ------------------------------------------------------------------- */
+[ztg-color] { --ztg-fg: #ffffff; }
+[ztg-color="grey"]   { --ztg-c: #5f6368; }
+[ztg-color="blue"]   { --ztg-c: #1a73e8; }
+[ztg-color="red"]    { --ztg-c: #d93025; }
+[ztg-color="yellow"] { --ztg-c: #f9ab00; --ztg-fg: #202124; }
+[ztg-color="green"]  { --ztg-c: #188038; }
+[ztg-color="pink"]   { --ztg-c: #d01884; }
+[ztg-color="purple"] { --ztg-c: #a142f4; }
+[ztg-color="cyan"]   { --ztg-c: #007b83; }
+[ztg-color="orange"] { --ztg-c: #fa903e; --ztg-fg: #202124; }
+
+@media (prefers-color-scheme: dark) {
+	[ztg-color] { --ztg-fg: #202124; }
+	[ztg-color="grey"]   { --ztg-c: #dadce0; }
+	[ztg-color="blue"]   { --ztg-c: #8ab4f8; }
+	[ztg-color="red"]    { --ztg-c: #f28b82; }
+	[ztg-color="yellow"] { --ztg-c: #fdd663; }
+	[ztg-color="green"]  { --ztg-c: #81c995; }
+	[ztg-color="pink"]   { --ztg-c: #ff8bcb; }
+	[ztg-color="purple"] { --ztg-c: #d7aefb; }
+	[ztg-color="cyan"]   { --ztg-c: #78d9ec; }
+	[ztg-color="orange"] { --ztg-c: #fcad70; }
+}
+
+/* ---------------------------------------------------------------------
+ * Tabs
+ * ------------------------------------------------------------------- */
+#tab-bar-container .tabs > .tab {
+	/* keep Zotero's background transition, add the collapse animation */
+	transition:
+		background-color 0.1s ease-out,
+		max-width 0.2s cubic-bezier(0.2, 0, 0, 1),
+		min-width 0.2s cubic-bezier(0.2, 0, 0, 1),
+		flex-basis 0.2s cubic-bezier(0.2, 0, 0, 1),
+		padding 0.2s cubic-bezier(0.2, 0, 0, 1),
+		margin 0.2s cubic-bezier(0.2, 0, 0, 1),
+		opacity 0.15s ease-out,
+		visibility 0s linear 0s;
+}
+
+/* Color bar under every tab of a group; it bridges the gap to the next tab
+ * so the group reads as one continuous unit (Chrome style) */
+#tab-bar-container .tabs > .tab[ztg-group]::after {
+	content: "";
+	position: absolute;
+	inset-inline-start: 0;
+	inset-inline-end: -4px;
+	bottom: -3px;
+	height: 2px;
+	background: var(--ztg-c);
+	pointer-events: none;
+}
+
+#tab-bar-container .tabs > .tab[ztg-group][ztg-last]::after {
+	inset-inline-end: 6px;
+	border-start-end-radius: 1px;
+	border-end-end-radius: 1px;
+}
+
+/* The selected tab of a group gets a hairline in the group color */
+#tab-bar-container .tabs > .tab.selected[ztg-group] {
+	box-shadow:
+		inset 0 0 0 1px color-mix(in srgb, var(--ztg-c) 55%, transparent),
+		0px 0px 0px 0.5px rgba(0, 0, 0, 0.05),
+		0px 0.5px 2.5px 0px rgba(0, 0, 0, 0.30);
+}
+
+/* Tabs of a collapsed group shrink away into the group chip */
+#tab-bar-container .tabs > .tab[ztg-hidden] {
+	min-width: 0 !important;
+	max-width: 0 !important;
+	flex-basis: 0 !important;
+	flex-grow: 0 !important;
+	padding-inline: 0 !important;
+	border-width: 0 !important;
+	margin-inline-end: -4px; /* swallow the column gap */
+	opacity: 0;
+	visibility: hidden;
+	overflow: hidden;
+	pointer-events: none;
+	transition:
+		background-color 0.1s ease-out,
+		max-width 0.2s cubic-bezier(0.2, 0, 0, 1),
+		min-width 0.2s cubic-bezier(0.2, 0, 0, 1),
+		flex-basis 0.2s cubic-bezier(0.2, 0, 0, 1),
+		padding 0.2s cubic-bezier(0.2, 0, 0, 1),
+		margin 0.2s cubic-bezier(0.2, 0, 0, 1),
+		opacity 0.12s ease-in,
+		visibility 0s linear 0.2s;
+}
+
+#tab-bar-container .tabs > .tab[ztg-hidden]::after {
+	display: none;
+}
+
+/* ---------------------------------------------------------------------
+ * Group chip (header)
+ * ------------------------------------------------------------------- */
+.ztg-header {
+	position: relative;
+	flex: 0 0 auto;
+	display: flex;
+	align-items: center;
+	height: 28px;
+	padding-inline: 2px;
+	box-sizing: border-box;
+	border-radius: 6px;
+	cursor: default;
+	user-select: none;
+	-moz-window-dragging: no-drag;
+	outline: none;
+}
+
+.ztg-chip {
+	display: flex;
+	align-items: center;
+	gap: 5px;
+	box-sizing: border-box;
+	height: 20px;
+	max-width: 160px;
+	padding-inline: 8px;
+	border-radius: 6px;
+	background: var(--ztg-c);
+	color: var(--ztg-fg);
+	font-size: 12px;
+	font-weight: 600;
+	line-height: 20px;
+	transition:
+		background-color 0.15s ease-out,
+		padding 0.2s cubic-bezier(0.2, 0, 0, 1),
+		border-radius 0.2s cubic-bezier(0.2, 0, 0, 1),
+		width 0.2s cubic-bezier(0.2, 0, 0, 1),
+		height 0.2s cubic-bezier(0.2, 0, 0, 1),
+		box-shadow 0.1s ease-out;
+}
+
+.ztg-title {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	min-width: 0;
+}
+
+/* Unnamed group: a small colored dot, like Chrome */
+.ztg-header[ztg-untitled] .ztg-chip {
+	width: 14px;
+	height: 14px;
+	padding: 0;
+	margin-inline: 3px;
+	border-radius: 7px;
+	justify-content: center;
+}
+
+.ztg-header[ztg-untitled] .ztg-title {
+	display: none;
+}
+
+/* Tab count, shown while collapsed */
+.ztg-count {
+	display: none;
+	box-sizing: border-box;
+	min-width: 16px;
+	height: 14px;
+	padding-inline: 4px;
+	border-radius: 7px;
+	background: color-mix(in srgb, var(--ztg-fg) 22%, transparent);
+	font-size: 10px;
+	font-weight: 700;
+	line-height: 14px;
+	text-align: center;
+	font-variant-numeric: tabular-nums;
+}
+
+.ztg-header[ztg-collapsed] .ztg-count {
+	display: inline-block;
+}
+
+.ztg-header[ztg-collapsed][ztg-untitled] .ztg-chip {
+	width: auto;
+	height: 20px;
+	padding-inline: 3px;
+	border-radius: 6px;
+	margin-inline: 0;
+}
+
+.ztg-header[ztg-collapsed][ztg-untitled] .ztg-count {
+	background: transparent;
+}
+
+.ztg-header:hover .ztg-chip {
+	box-shadow: 0 0 0 2px color-mix(in srgb, var(--ztg-c) 30%, transparent);
+}
+
+.ztg-header:active .ztg-chip {
+	box-shadow: 0 0 0 2px color-mix(in srgb, var(--ztg-c) 45%, transparent);
+}
+
+.ztg-header:focus-visible .ztg-chip {
+	box-shadow: 0 0 0 2px var(--color-focus-border, #0a84ff);
+}
+
+/* The color bar starts under the chip and runs into the first tab */
+.ztg-header:not([ztg-collapsed])::after {
+	content: "";
+	position: absolute;
+	inset-inline-start: 50%;
+	inset-inline-end: -4px;
+	bottom: -3px;
+	height: 2px;
+	background: var(--ztg-c);
+	border-start-start-radius: 1px;
+	border-end-start-radius: 1px;
+	pointer-events: none;
+}
+
+/* ---------------------------------------------------------------------
+ * Dragging
+ * ------------------------------------------------------------------- */
+#tab-bar-container .tabs[ztg-dragging] {
+	user-select: none;
+}
+
+#tab-bar-container .tabs[ztg-dragging] > .tab,
+#tab-bar-container .tabs[ztg-dragging] > .ztg-header {
+	transition:
+		transform 0.18s cubic-bezier(0.2, 0, 0, 1),
+		background-color 0.1s ease-out;
+}
+
+#tab-bar-container .tabs[ztg-dragging] > .tab:not(.selected):hover {
+	background-color: transparent;
+}
+
+#tab-bar-container .tabs > [ztg-drag-unit] {
+	z-index: 2;
+	transition: none !important;
+}
+
+#tab-bar-container .tabs > .tab[ztg-drag-unit] {
+	background: var(--material-button, #ffffff);
+	box-shadow:
+		0px 0px 0px 0.5px rgba(0, 0, 0, 0.08),
+		0px 4px 12px -2px rgba(0, 0, 0, 0.30);
+}
+
+#tab-bar-container .tabs > [ztg-drag-unit][ztg-settling] {
+	transition: transform 0.18s cubic-bezier(0.2, 0, 0, 1) !important;
+}
+
+/* ---------------------------------------------------------------------
+ * Group editor bubble
+ * ------------------------------------------------------------------- */
+.ztg-editor {
+	position: fixed;
+	inset: auto;
+	margin: 0;
+	z-index: 2147483647;
+	box-sizing: border-box;
+	width: 268px;
+	padding: 12px;
+	border: 0.5px solid var(--material-panedivider-color, rgba(0, 0, 0, 0.18));
+	border-radius: 10px;
+	background: var(--material-sidepane, var(--material-background, #ffffff));
+	color: var(--fill-primary, #202124);
+	box-shadow:
+		0 0 0 0.5px rgba(0, 0, 0, 0.06),
+		0 8px 28px rgba(0, 0, 0, 0.22);
+	font: menu;
+	font-size: 13px;
+	-moz-window-dragging: no-drag;
+	user-select: none;
+	animation: ztg-pop-in 0.12s cubic-bezier(0.2, 0, 0, 1);
+}
+
+@keyframes ztg-pop-in {
+	from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+	to   { opacity: 1; transform: none; }
+}
+
+.ztg-editor-name {
+	display: block;
+	box-sizing: border-box;
+	width: 100%;
+	height: 30px;
+	margin: 0 0 12px;
+	padding: 0 9px;
+	border: 1px solid var(--fill-quinary, rgba(0, 0, 0, 0.18));
+	border-radius: 6px;
+	background: var(--material-background, #ffffff);
+	color: inherit;
+	font: inherit;
+	user-select: text;
+	outline: none;
+}
+
+.ztg-editor-name:focus {
+	border-color: var(--ztg-c);
+	box-shadow: 0 0 0 2px color-mix(in srgb, var(--ztg-c) 30%, transparent);
+}
+
+.ztg-editor-colors {
+	display: flex;
+	justify-content: space-between;
+	padding-inline: 1px;
+}
+
+.ztg-swatch {
+	appearance: none;
+	box-sizing: border-box;
+	width: 22px;
+	height: 22px;
+	min-width: 0;
+	margin: 0;
+	padding: 0;
+	border: 0;
+	border-radius: 50%;
+	background: var(--ztg-c);
+	cursor: default;
+	transition: transform 0.1s ease-out, box-shadow 0.1s ease-out;
+}
+
+.ztg-swatch:hover {
+	transform: scale(1.1);
+}
+
+.ztg-swatch[aria-checked="true"] {
+	box-shadow:
+		0 0 0 2px var(--material-sidepane, var(--material-background, #ffffff)),
+		0 0 0 4px var(--ztg-c);
+}
+
+.ztg-editor-separator {
+	height: 0.5px;
+	margin: 12px -12px 6px;
+	background: var(--fill-quinary, rgba(0, 0, 0, 0.12));
+}
+
+.ztg-editor-actions {
+	display: flex;
+	flex-direction: column;
+	margin: 0 -6px -6px;
+}
+
+.ztg-editor-item {
+	appearance: none;
+	display: block;
+	width: 100%;
+	min-width: 0;
+	height: 28px;
+	margin: 0;
+	padding: 0 8px;
+	border: 0;
+	border-radius: 5px;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	text-align: start;
+	cursor: default;
+}
+
+.ztg-editor-item:hover {
+	background: var(--fill-quinary, rgba(0, 0, 0, 0.06));
+}
+
+.ztg-editor-item:active {
+	background: var(--fill-quarternary, rgba(0, 0, 0, 0.1));
+}

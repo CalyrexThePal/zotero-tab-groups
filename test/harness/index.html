@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Tab Groups harness</title>
+<style>
+	:root {
+		/* Approximation of Zotero 10's light theme tokens used by the tab bar */
+		--material-tabbar: #ececec;
+		--material-button: #ffffff;
+		--material-background: #ffffff;
+		--material-sidepane: #f8f8f8;
+		--fill-primary: rgba(0, 0, 0, 0.85);
+		--fill-secondary: rgba(0, 0, 0, 0.5);
+		--fill-tertiary: rgba(0, 0, 0, 0.3);
+		--fill-quarternary: rgba(0, 0, 0, 0.1);
+		--fill-quinary: rgba(0, 0, 0, 0.05);
+		--tab-border: rgba(0, 0, 0, 0.1);
+		--tab-min-height: 36px;
+		--material-panedivider: 1px solid rgba(0, 0, 0, 0.1);
+		color-scheme: light;
+	}
+	@media (prefers-color-scheme: dark) {
+		:root {
+			--material-tabbar: #2b2b2b;
+			--material-button: #4a4a4a;
+			--material-background: #1e1e1e;
+			--material-sidepane: #303030;
+			--fill-primary: rgba(255, 255, 255, 0.85);
+			--fill-secondary: rgba(255, 255, 255, 0.55);
+			--fill-quarternary: rgba(255, 255, 255, 0.12);
+			--fill-quinary: rgba(255, 255, 255, 0.06);
+			--tab-border: rgba(255, 255, 255, 0.1);
+			color-scheme: dark;
+		}
+	}
+	html, body { margin: 0; font: 13px system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--material-background); }
+	#titlebar { display: flex; height: 36px; }
+	.icon-css { display: inline-block; width: 16px; height: 16px; border-radius: 3px; background: #c4c4c4; }
+	.icon-item-type { background: #d9534f; }
+	#content { padding: 24px; color: var(--fill-secondary); }
+</style>
+<link rel="stylesheet" href="tabbar.css">
+<link rel="stylesheet" href="tabGroups.css">
+</head>
+<body>
+<div id="titlebar"><div id="tab-bar-container"></div></div>
+<div id="content">Zotero tab bar harness — Zotero 10 TabBar component + Tab Groups plugin controller</div>
+<script src="ftl.js"></script>
+<script src="model.js"></script>
+<script src="store.js"></script>
+<script src="controller.js"></script>
+<script src="harness.js"></script>
+</body>
+</html>
