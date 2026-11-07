@@ -111,6 +111,7 @@ var ZTG_WindowController = (function () {
 			this._unsubscribe = this.store.subscribe(() => this._decorate());
 
 			for (let tab of this._tabList()) this._knownTabIds.add(tab.id);
+			this._prevOrder = this._tabList().map(t => t.id);
 			this._lastTabCount = this._tabList().length;
 			this.refresh();
 		}
@@ -374,8 +375,11 @@ var ZTG_WindowController = (function () {
 				if (gid && !this.store.has(gid)) this.store.resurrect(gid);
 			}
 
+			let order = tabs.map(t => t.id);
+			let moved = ZTG_Model.changedSince(this._prevOrder || order, order);
+			this._prevOrder = order;
 			let before = tabs.map(t => this._rawGroupOf(t));
-			let after = ZTG_Model.normalize(before, gid => this.store.has(gid));
+			let after = ZTG_Model.normalize(before, gid => this.store.has(gid), moved);
 			for (let i = 0; i < tabs.length; i++) {
 				if (before[i] !== after[i]) {
 					changed = this._setRawGroup(tabs[i], after[i]) || changed;
@@ -1119,10 +1123,15 @@ var ZTG_WindowController = (function () {
 		// Group editor bubble
 		// ------------------------------------------------------------------
 
-		openEditor(groupId, { isNew = false } = {}) {
+		openEditor(groupId, { isNew = false, retries = 10 } = {}) {
 			let group = this.store.get(groupId);
+			if (!group) return;
 			let header = this._headers.get(groupId);
-			if (!group || !header) return;
+			if (!header || !header.isConnected) {
+				// The tab may not be rendered yet (React renders asynchronously)
+				if (retries > 0) this._setTimeout(() => this.openEditor(groupId, { isNew, retries: retries - 1 }), 30);
+				return;
+			}
 			this.closeEditor();
 			let doc = this.doc;
 			let h = (tag, cls, attrs = {}) => {

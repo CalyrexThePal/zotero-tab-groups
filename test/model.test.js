@@ -29,6 +29,28 @@ test('normalize: split group tie keeps the first run', () => {
 	assert.deepEqual(M.normalize(['a', 'b', 'a'], exists), ['a', 'b', null]);
 });
 
+test('normalize: only moved/new tabs are absorbed by a group', () => {
+	// tab moved to the end; the two ungrouped tabs it jumped over stay ungrouped
+	assert.deepEqual(
+		M.normalize(['a', 'a', null, null, 'a'], exists, [false, false, false, false, true]),
+		['a', 'a', null, null, null]
+	);
+	// a new tab opened inside the group joins it
+	assert.deepEqual(M.normalize(['a', null, 'a'], exists, [false, true, false]), ['a', 'a', 'a']);
+});
+
+test('normalize: the run with unmoved tabs keeps the group', () => {
+	// last member moved to the very start
+	assert.deepEqual(M.normalize(['a', null, 'a'], exists, [true, false, false]), [null, null, 'a']);
+});
+
+test('changedSince finds moved and new tabs', () => {
+	assert.deepEqual(M.changedSince(['1', '2', '3', '4'], ['1', '3', '4', '2']), [false, false, false, true]);
+	assert.deepEqual(M.changedSince(['1', '2'], ['1', 'n', '2']), [false, true, false]);
+	assert.deepEqual(M.changedSince(['1', '2', '3'], ['3', '1', '2']), [true, false, false]);
+	assert.deepEqual(M.changedSince([], ['1']), [true]);
+});
+
 test('pickColor follows palette order, least-used first', () => {
 	assert.equal(M.pickColor([]), 'grey');
 	assert.equal(M.pickColor(['grey']), 'blue');

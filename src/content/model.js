@@ -16,20 +16,25 @@ var ZTG_Model = (function () {
 	/**
 	 * Enforce Chrome's membership invariants on a tab strip.
 	 *
-	 *   1. Spatial inclusion: an ungrouped run of tabs that sits between two
-	 *      members of the same group joins that group.
+	 *   1. Spatial inclusion: tabs that were just opened or moved and landed
+	 *      between two members of the same group join that group. (Tabs that
+	 *      stayed put while others moved around them are left alone.)
 	 *   2. Contiguity: a group is always one contiguous run of tabs. If a
 	 *      group got split (e.g. a member was moved away by "Move to End"),
-	 *      the longest run keeps the group; stray members are ungrouped.
+	 *      the run that kept the most unmoved tabs keeps the group (then the
+	 *      longest, then the first); stray members are ungrouped.
 	 *   3. Unknown group ids are dropped.
 	 *
 	 * @param {Array<string|null>} groupIds group id of each tab, in strip order
 	 *   (the Library tab excluded)
 	 * @param {(id: string) => boolean} groupExists
+	 * @param {boolean[]} [changed] which tabs were opened/moved since the last
+	 *   normalization (default: all)
 	 * @returns {Array<string|null>} normalized group ids (same length)
 	 */
-	function normalize(groupIds, groupExists) {
+	function normalize(groupIds, groupExists, changed) {
 		let out = groupIds.map(g => (g && groupExists(g) ? g : null));
+		let isChanged = i => !changed || !!changed[i];
 
 		// 1. Spatial inclusion
 		let i = 0;
@@ -39,34 +44,80 @@ var ZTG_Model = (function () {
 				continue;
 			}
 			let start = i;
-			while (i < out.length && out[i] === null) i++;
+			let allChanged = true;
+			while (i < out.length && out[i] === null) {
+				if (!isChanged(i)) allChanged = false;
+				i++;
+			}
 			let before = start > 0 ? out[start - 1] : null;
 			let after = i < out.length ? out[i] : null;
-			if (before !== null && before === after) {
+			if (allChanged && before !== null && before === after) {
 				for (let j = start; j < i; j++) out[j] = before;
 			}
 		}
 
 		// 2. Contiguity
-		let runs = new Map(); // groupId -> [{start, length}]
+		let runs = new Map(); // groupId -> [{start, length, stable}]
 		i = 0;
 		while (i < out.length) {
 			let g = out[i];
 			let start = i;
-			while (i < out.length && out[i] === g) i++;
+			let stable = 0;
+			while (i < out.length && out[i] === g) {
+				if (!isChanged(i)) stable++;
+				i++;
+			}
 			if (g === null) continue;
 			if (!runs.has(g)) runs.set(g, []);
-			runs.get(g).push({ start, length: i - start });
+			runs.get(g).push({ start, length: i - start, stable });
 		}
 		for (let [, groupRuns] of runs) {
 			if (groupRuns.length < 2) continue;
-			let keep = groupRuns.reduce((best, r) => (r.length > best.length ? r : best), groupRuns[0]);
+			let keep = groupRuns.reduce((best, r) => (
+				r.stable > best.stable || (r.stable === best.stable && r.length > best.length) ? r : best
+			), groupRuns[0]);
 			for (let r of groupRuns) {
 				if (r === keep) continue;
 				for (let j = r.start; j < r.start + r.length; j++) out[j] = null;
 			}
 		}
 		return out;
+	}
+
+	/**
+	 * Which tabs are new or changed position between two orderings: everything
+	 * outside a longest common subsequence of the two id lists.
+	 *
+	 * @param {string[]} prev
+	 * @param {string[]} cur
+	 * @returns {boolean[]} flag per entry of `cur`
+	 */
+	function changedSince(prev, cur) {
+		let prevSet = new Set(prev);
+		let a = prev.filter(id => cur.includes(id));
+		let b = cur;
+		// LCS table
+		let m = a.length;
+		let n = b.length;
+		let dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+		for (let x = m - 1; x >= 0; x--) {
+			for (let y = n - 1; y >= 0; y--) {
+				dp[x][y] = a[x] === b[y] ? dp[x + 1][y + 1] + 1 : Math.max(dp[x + 1][y], dp[x][y + 1]);
+			}
+		}
+		let inLCS = new Set();
+		let x = 0;
+		let y = 0;
+		while (x < m && y < n) {
+			if (a[x] === b[y]) {
+				inLCS.add(b[y]);
+				x++;
+				y++;
+			}
+			else if (dp[x + 1][y] >= dp[x][y + 1]) x++;
+			else y++;
+		}
+		return cur.map(id => !prevSet.has(id) || !inLCS.has(id));
 	}
 
 	/**
@@ -182,7 +233,7 @@ var ZTG_Model = (function () {
 		return next.kind === 'header' ? next.firstTabId : next.tabId;
 	}
 
-	return { COLORS, normalize, pickColor, computeDrop, insertionAnchor };
+	return { COLORS, normalize, changedSince, pickColor, computeDrop, insertionAnchor };
 })();
 
 if (typeof module !== 'undefined') {
