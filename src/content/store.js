@@ -68,6 +68,10 @@ var ZTG_Store = class {
 	}
 
 	flush() {
+		if (this._saveTimer) {
+			clearTimeout(this._saveTimer);
+			this._saveTimer = null;
+		}
 		try {
 			this._write(this._serialize());
 		}

@@ -61,6 +61,9 @@ async function group(page, tabIds, title = '', opts = {}) {
 	}, { tabIds, title, opts });
 }
 
+// Let chip/color transitions finish before measuring
+const settle = page => page.waitForTimeout(260);
+
 async function center(page, selector) {
 	let box = await page.locator(selector).first().boundingBox();
 	return { x: box.x + box.width / 2, y: box.y + box.height / 2, box };
@@ -146,6 +149,7 @@ test('clicking the chip collapses and expands the group; selection leaves a coll
 	let [a, b, c, d] = await ids(page);
 	let gid = await group(page, [b, c], 'Reading', { color: 'green' });
 	await page.evaluate(id => Zotero_Tabs.select(id), c);
+	await settle(page);
 	let before = (await page.locator(tabSel(d)).boundingBox()).x;
 	await page.locator(headerSel(gid)).click();
 	await page.waitForTimeout(320);
@@ -161,7 +165,8 @@ test('clicking the chip collapses and expands the group; selection leaves a coll
 	await page.locator(headerSel(gid)).click();
 	await page.waitForTimeout(320);
 	assert.equal(await page.locator(tabSel(b)).isVisible(), true);
-	assert.ok(Math.abs((await page.locator(tabSel(d)).boundingBox()).x - before) < 1);
+	let restored = (await page.locator(tabSel(d)).boundingBox()).x;
+	assert.ok(Math.abs(restored - before) < 1, `restored ${restored} vs ${before}`);
 	let saved = JSON.parse(await page.evaluate(() => __prefs.get()));
 	assert.equal(saved.groups[gid].collapsed, false);
 	assert.deepEqual(page.errors, []);
@@ -403,6 +408,7 @@ test('dark mode renders lighter group colors', async () => {
 	let [, b, c, d] = await ids(page);
 	await group(page, [b, c], 'Dark', { color: 'blue' });
 	await group(page, [d], '', { color: 'green' });
+	await settle(page);
 	let color = await page.locator('.ztg-chip').first().evaluate(el => getComputedStyle(el).backgroundColor);
 	assert.equal(color, 'rgb(138, 180, 248)');
 	await shot(page, '07-dark');
@@ -450,5 +456,56 @@ test('controller.destroy() removes every trace from the strip', async () => {
 	assert.ok(leftovers.draggable.every(v => v === 'true'));
 	// Zotero's original methods are restored
 	assert.equal(await page.evaluate(() => Zotero_Tabs._update.toString().includes('_beforeUpdate')), false);
+	await page.close();
+});
+
+test('closing the selected tab never lands inside a collapsed group', async () => {
+	let page = await setup();
+	let [a, b, c, d] = await ids(page);
+	let gid = await group(page, [b, c]);
+	await page.evaluate(g => __ztg.controller.toggleCollapsed(g, true), gid);
+	await page.locator(tabSel(a)).click();
+	await page.evaluate(() => Zotero_Tabs.close());
+	assert.equal(await page.evaluate(() => Zotero_Tabs._selectedID), d);
+	assert.equal(await page.evaluate(g => __ztg.store.get(g).collapsed, gid), true);
+	await page.close();
+});
+
+test('clicking a chip does not steal keyboard focus; Ctrl+Arrow focus skips hidden tabs and stops on chips', async () => {
+	let page = await setup();
+	let [a, b, c, d] = await ids(page);
+	let g1 = await group(page, [b, c]);
+	await page.locator(tabSel(a)).click();
+	let before = await page.evaluate(() => document.activeElement.getAttribute('data-id'));
+	await page.locator(headerSel(g1)).click();
+	await page.waitForTimeout(260);
+	assert.equal(await page.evaluate(() => document.activeElement.getAttribute('data-id')), before);
+	// Group is now collapsed: a -> chip -> d
+	await page.evaluate(id => document.querySelector(`.tabs-wrapper .tab[data-id="${id}"]`).focus(), a);
+	await page.evaluate(() => Zotero_Tabs.moveFocus('next'));
+	assert.equal(await page.evaluate(() => document.activeElement.getAttribute('data-ztg-group-id')), g1);
+	await page.keyboard.press('Enter');
+	assert.equal(await page.evaluate(g => __ztg.store.get(g).collapsed, g1), false);
+	await page.evaluate(g => __ztg.controller.toggleCollapsed(g, true), g1);
+	await page.evaluate(() => Zotero_Tabs.moveFocus('next'));
+	assert.equal(await page.evaluate(() => document.activeElement.getAttribute('data-id')), d);
+	await page.evaluate(() => Zotero_Tabs.moveFocus('previous'));
+	await page.evaluate(() => Zotero_Tabs.moveFocus('previous'));
+	assert.equal(await page.evaluate(() => document.activeElement.getAttribute('data-id')), a);
+	await page.close();
+});
+
+test('tabs restored into a collapsed group appear collapsed without animating', async () => {
+	let page = await setup({ tabs: ['One'] });
+	let widths = await page.evaluate(async () => {
+		let g = __ztg.store.create({ title: 'Saved' });
+		__ztg.store.update(g.id, { collapsed: true });
+		Zotero_Tabs.add({ title: 'Restored A', data: { itemID: 1, tabGroupId: g.id } });
+		Zotero_Tabs.add({ title: 'Restored B', data: { itemID: 2, tabGroupId: g.id } });
+		// first frame after React renders the new tabs
+		await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+		return Array.from(document.querySelectorAll('.tabs-wrapper .tab[ztg-hidden]')).map(el => el.getBoundingClientRect().width);
+	});
+	assert.deepEqual(widths, [0, 0]);
 	await page.close();
 });

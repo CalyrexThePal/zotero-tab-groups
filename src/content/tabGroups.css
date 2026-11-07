@@ -223,6 +223,13 @@
 	pointer-events: none;
 }
 
+/* Elements that first appear already collapsed skip the animation */
+[ztg-instant],
+[ztg-instant] *,
+[ztg-instant]::after {
+	transition: none !important;
+}
+
 /* ---------------------------------------------------------------------
  * Dragging
  * ------------------------------------------------------------------- */

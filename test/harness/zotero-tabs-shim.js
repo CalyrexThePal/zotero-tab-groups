@@ -76,11 +76,18 @@ export function createZoteroTabs(tabBarRef, log) {
 				let { tab, tabIndex } = this._getTab(id);
 				if (!tab) continue;
 				if (tab.id == this._selectedID) {
-					let tabToSelect = this._tabs.slice(tabIndex + 1)
-						.concat(this._tabs.slice(0, tabIndex).reverse())
-						.find(x => !ids.includes(x.id));
+					let tabToSelect = null;
+					if (this._prevSelectedID && !ids.includes(this._prevSelectedID)) {
+						tabToSelect = this._getTab(this._prevSelectedID).tab;
+					}
+					else {
+						tabToSelect = this._tabs.slice(tabIndex + 1)
+							.concat(this._tabs.slice(0, tabIndex).reverse())
+							.find(x => !ids.includes(x.id));
+					}
 					this.select(tabToSelect.id);
 				}
+				if (tab.id == this._prevSelectedID) this._prevSelectedID = null;
 				tabIndex = this._tabs.findIndex(x => x.id === id);
 				this._tabs.splice(tabIndex, 1);
 				historyEntry.push({ index: tmpTabs.indexOf(tab), data: tab.data, type: tab.type });
@@ -110,11 +117,36 @@ export function createZoteroTabs(tabBarRef, log) {
 			this._update();
 		},
 
-		select(id) {
+		select(id, reopening) {
 			let { tab } = this._getTab(id);
 			if (!tab || tab.id === this._selectedID) return;
+			this._prevSelectedID = reopening ? this._selectedID : null;
 			this._selectedID = id;
 			this._update();
+		},
+
+		// Same logic as tabs.js moveFocus()
+		moveFocus(direction) {
+			let focusedTabID = document.activeElement.getAttribute('data-id');
+			let { tabIndex } = this._getTab(this._selectedID);
+			let tabIndexToFocus = null;
+			if (direction === 'last') tabIndexToFocus = this._tabs.length - 1;
+			else if (direction == 'first') tabIndexToFocus = 0;
+			else if (direction == 'current') tabIndexToFocus = tabIndex;
+			else {
+				let focusedTabIndex = this._tabs.findIndex(tab => tab.id === focusedTabID);
+				if (focusedTabIndex === -1) focusedTabIndex = tabIndex;
+				if (direction === 'previous') tabIndexToFocus = focusedTabIndex > 0 ? focusedTabIndex - 1 : null;
+				else tabIndexToFocus = focusedTabIndex < this._tabs.length - 1 ? focusedTabIndex + 1 : null;
+			}
+			if (tabIndexToFocus !== null) {
+				const nextTab = this._tabs[tabIndexToFocus];
+				let candidates = document.querySelectorAll(`#tab-bar-container .tab[data-id="${nextTab.id}"]`);
+				for (let node of candidates) {
+					node.focus();
+					if (document.activeElement == node) return;
+				}
+			}
 		},
 
 		selectPrev() {

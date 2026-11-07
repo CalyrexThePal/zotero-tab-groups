@@ -69,7 +69,7 @@ var ZTG_WindowController = (function () {
 
 			for (let name of [
 				'_onMutations', '_onPointerDown', '_onPointerMove', '_onPointerUp',
-				'_onDragStart', '_onClick', '_onContextMenu', '_onKeyDown', '_onDragKeyDown',
+				'_onDragStart', '_onMouseDown', '_onClick', '_onContextMenu', '_onKeyDown', '_onDragKeyDown',
 				'_dragFrame', '_onEditorDocPointerDown', '_onEditorKeyDown', '_onWindowBlur',
 			]) {
 				this[name] = this[name].bind(this);
@@ -97,12 +97,31 @@ var ZTG_WindowController = (function () {
 			this._patch(this.tabs, 'selectPrev', () => function (options) {
 				controller._selectAdjacent(-1, options);
 			});
+			// Closing the selected tab must not land on a tab hidden in a
+			// collapsed group (that would pop the group open)
+			this._patch(this.tabs, 'close', orig => function (ids) {
+				try {
+					controller._beforeClose(ids);
+				}
+				catch (e) {
+					controller._logError(e);
+				}
+				return orig.call(this, ids);
+			});
+			// Ctrl/Cmd+Arrow keyboard focus: skip hidden tabs, stop on group chips
+			this._patch(this.tabs, 'moveFocus', orig => function (direction) {
+				if ((direction === 'next' || direction === 'previous') && controller._moveFocus(direction)) {
+					return undefined;
+				}
+				return orig.call(this, direction);
+			});
 			this._wrapTabHooks();
 
 			this._observer = new this.win.MutationObserver(this._onMutations);
 			this._observer.observe(this.container, { childList: true, subtree: true });
 
 			this.container.addEventListener('pointerdown', this._onPointerDown);
+			this.container.addEventListener('mousedown', this._onMouseDown, true);
 			this.container.addEventListener('dragstart', this._onDragStart, true);
 			this.container.addEventListener('click', this._onClick, true);
 			this.container.addEventListener('contextmenu', this._onContextMenu, true);
@@ -113,7 +132,11 @@ var ZTG_WindowController = (function () {
 			for (let tab of this._tabList()) this._knownTabIds.add(tab.id);
 			this._prevOrder = this._tabList().map(t => t.id);
 			this._lastTabCount = this._tabList().length;
+			this._seenEls = new WeakSet();
 			this.refresh();
+			// Zotero restores the previous session asynchronously; once that has
+			// certainly happened, drop groups whose tabs no longer exist
+			this._setTimeout(() => this.purgeEmptyGroups(), 60000);
 		}
 
 		destroy() {
@@ -125,6 +148,7 @@ var ZTG_WindowController = (function () {
 			if (this._unsubscribe) this._unsubscribe();
 			if (this.container) {
 				this.container.removeEventListener('pointerdown', this._onPointerDown);
+				this.container.removeEventListener('mousedown', this._onMouseDown, true);
 				this.container.removeEventListener('dragstart', this._onDragStart, true);
 				this.container.removeEventListener('click', this._onClick, true);
 				this.container.removeEventListener('contextmenu', this._onContextMenu, true);
@@ -143,7 +167,7 @@ var ZTG_WindowController = (function () {
 			for (let header of this._headers.values()) header.remove();
 			this._headers.clear();
 			for (let el of this.container ? this.container.querySelectorAll('.tab') : []) {
-				for (let attr of ['ztg-group', 'ztg-color', 'ztg-hidden', 'ztg-first', 'ztg-last', 'ztg-drag-unit', 'ztg-settling']) {
+				for (let attr of ['ztg-group', 'ztg-color', 'ztg-hidden', 'ztg-first', 'ztg-last', 'ztg-drag-unit', 'ztg-settling', 'ztg-instant']) {
 					el.removeAttribute(attr);
 				}
 				if (el.getAttribute('draggable') === 'false') el.setAttribute('draggable', 'true');
@@ -447,6 +471,63 @@ var ZTG_WindowController = (function () {
 			}
 		}
 
+		_beforeClose(ids) {
+			let selectedID = this.tabs._selectedID;
+			let list = !ids ? [selectedID] : (Array.isArray(ids) ? ids : [ids]);
+			if (!list.includes(selectedID)) return;
+			let all = this.tabs._tabs;
+			let ok = t => t && !list.includes(t.id) && !this.isHidden(t);
+			let prev = this.tabs._prevSelectedID && this._getTab(this.tabs._prevSelectedID);
+			if (prev && !list.includes(prev.id)) {
+				if (ok(prev)) return;
+			}
+			else {
+				// Zotero would pick the next tab to the right, then to the left
+				let index = all.findIndex(t => t.id === selectedID);
+				let fallback = all.slice(index + 1).concat(all.slice(0, index).reverse())
+					.find(t => !list.includes(t.id));
+				if (!fallback || ok(fallback)) return;
+			}
+			let index = all.findIndex(t => t.id === selectedID);
+			let pick = all.slice(index + 1).concat(all.slice(0, index).reverse()).find(ok);
+			if (pick) this.tabs._prevSelectedID = pick.id;
+		}
+
+		/** Visible, keyboard-reachable strip items (tabs and group chips) */
+		_focusableItems() {
+			let strip = this._getStrip();
+			if (!strip) return [];
+			return Array.from(strip.children).filter(el => (
+				el.classList.contains('ztg-header')
+				|| (el.classList.contains('tab') && !el.hasAttribute('ztg-hidden'))
+			));
+		}
+
+		/** @returns {boolean} whether focus was handled */
+		_moveFocus(direction) {
+			if (!this._headers.size) return false;
+			let items = this._focusableItems();
+			let active = this.doc.activeElement;
+			let index = items.indexOf(active);
+			if (index === -1) {
+				let id = active && active.getAttribute && active.getAttribute('data-id');
+				if (!id || !this._getTab(id)) id = this.tabs._selectedID;
+				index = items.findIndex(el => el.classList.contains('tab') && el.getAttribute('data-id') === id);
+				if (index === -1 && id === LIBRARY_TAB_ID) index = 0;
+			}
+			if (index === -1) return false;
+			let target = items[index + (direction === 'next' ? 1 : -1)];
+			if (!target) return true;
+			if (target.getAttribute('data-id') === LIBRARY_TAB_ID) {
+				// Zotero knows which of its two Library tab nodes is visible
+				this.tabs.moveFocus('first');
+			}
+			else {
+				target.focus();
+			}
+			return true;
+		}
+
 		// ------------------------------------------------------------------
 		// Rendering
 		// ------------------------------------------------------------------
@@ -487,6 +568,7 @@ var ZTG_WindowController = (function () {
 				for (let tab of this._tabList()) groupOfTab.set(tab.id, this._rawGroupOf(tab));
 
 				let tabEls = Array.from(strip.children).filter(el => el.classList.contains('tab'));
+				let instant = [];
 				let firstEl = new Map();
 				let lastEl = new Map();
 				let counts = new Map();
@@ -500,7 +582,18 @@ var ZTG_WindowController = (function () {
 					if (id !== LIBRARY_TAB_ID) this._setAttr(el, 'draggable', 'false');
 					this._setAttr(el, 'ztg-group', gid);
 					this._setAttr(el, 'ztg-color', g && g.color);
-					this._setAttr(el, 'ztg-hidden', !!(g && g.collapsed));
+					let hide = !!(g && g.collapsed);
+					if (!this._seenEls.has(el)) {
+						this._seenEls.add(el);
+						// A tab that is rendered already-collapsed (session restore,
+						// plugin start) must not play the collapse animation
+						if (hide && !el.hasAttribute('ztg-hidden')) {
+							el.setAttribute('ztg-instant', '');
+							el.setAttribute('ztg-hidden', '');
+							instant.push(el);
+						}
+					}
+					this._setAttr(el, 'ztg-hidden', hide);
 					if (gid) {
 						if (!firstEl.has(gid)) firstEl.set(gid, el);
 						lastEl.set(gid, el);
@@ -513,19 +606,34 @@ var ZTG_WindowController = (function () {
 					this._setAttr(el, 'ztg-last', !!gid && lastEl.get(gid) === el);
 				}
 
+				let layoutChanged = false;
 				for (let [gid, el] of firstEl) {
+					let isNew = !this._headers.has(gid);
 					let header = this._ensureHeader(gid);
-					this._updateHeader(header, this.store.get(gid), counts.get(gid));
+					if (isNew) {
+						header.setAttribute('ztg-instant', '');
+						instant.push(header);
+					}
+					if (this._updateHeader(header, this.store.get(gid), counts.get(gid))) layoutChanged = true;
 					if (header.parentNode !== strip || header.nextSibling !== el) {
 						strip.insertBefore(header, el);
+						if (isNew) layoutChanged = true;
 					}
 				}
 				for (let [gid, header] of this._headers) {
 					if (!firstEl.has(gid)) {
 						header.remove();
 						this._headers.delete(gid);
+						layoutChanged = true;
 					}
 				}
+				if (instant.length) {
+					// Flush styles so the final state applies without transitions
+					strip.getBoundingClientRect();
+					for (let el of instant) el.removeAttribute('ztg-instant');
+				}
+				// Zotero only re-measures its scroll arrows when it renders
+				if (layoutChanged) this._refreshTabBarSoon(120);
 			}
 			catch (e) {
 				this._logError(e);
@@ -557,8 +665,12 @@ var ZTG_WindowController = (function () {
 			return header;
 		}
 
+		/** @returns {boolean} whether the chip's size may have changed */
 		_updateHeader(header, group, count) {
 			let title = group.title || '';
+			let sizeKey = `${title}\n${group.collapsed}\n${group.collapsed ? count : ''}`;
+			let sizeChanged = header._ztgSizeKey !== undefined && header._ztgSizeKey !== sizeKey;
+			header._ztgSizeKey = sizeKey;
 			this._setAttr(header, 'ztg-color', group.color);
 			this._setAttr(header, 'ztg-collapsed', group.collapsed);
 			this._setAttr(header, 'ztg-untitled', !title);
@@ -573,18 +685,22 @@ var ZTG_WindowController = (function () {
 			});
 			this._setAttr(header, 'title', label);
 			this._setAttr(header, 'aria-label', label);
+			return sizeChanged;
 		}
 
 		/** Zotero recalculates its scroll arrows on render; nudge it after animations */
-		_refreshTabBarSoon() {
-			this._setTimeout(() => {
+		_refreshTabBarSoon(delay = COLLAPSE_ANIMATION_MS + 30) {
+			if (this._refreshTimer) this.win.clearTimeout(this._refreshTimer);
+			this._refreshTimer = this._setTimeout(() => {
+				this._refreshTimer = null;
+				if (this._drag) return;
 				try {
 					this.tabs._update();
 				}
 				catch (e) {
 					this._logError(e);
 				}
-			}, COLLAPSE_ANIMATION_MS + 30);
+			}, delay);
 		}
 
 		// ------------------------------------------------------------------
@@ -595,7 +711,11 @@ var ZTG_WindowController = (function () {
 		addTabToNewGroup(tabId, { openEditor = true } = {}) {
 			let tab = this._getTab(tabId);
 			if (!tab || tab.id === LIBRARY_TAB_ID) return null;
-			let group = this.store.create({});
+			// Like Chrome, pick the least-used color among groups on the strip
+			let inUse = new Set(this._tabList().map(t => this._rawGroupOf(t)).filter(Boolean));
+			let group = this.store.create({
+				color: ZTG_Model.pickColor(this.store.all().filter(g => inUse.has(g.id)).map(g => g.color)),
+			});
 			this._batch(() => {
 				let current = this.groupOf(tabId);
 				if (current) {
@@ -707,6 +827,12 @@ var ZTG_WindowController = (function () {
 			return el && this.container.contains(el) ? el : null;
 		}
 
+		_onMouseDown(e) {
+			// Clicking a chip must not move keyboard focus to it (Zotero would
+			// remember it as the Library tab's last focused element)
+			if (this._headerFromEvent(e)) e.preventDefault();
+		}
+
 		_onDragStart(e) {
 			// Zotero's native HTML5 tab dragging is replaced by our pointer-based one
 			let strip = this._getStrip();
@@ -740,13 +866,22 @@ var ZTG_WindowController = (function () {
 			let header = this._headerFromEvent(e);
 			if (!header) return;
 			let gid = header.getAttribute('data-ztg-group-id');
+			let rtl = this._isRTL(header.parentNode || header);
 			if (e.key === 'Enter' || e.key === ' ') {
 				e.preventDefault();
 				this.toggleCollapsed(gid);
 			}
 			else if (e.key === 'ContextMenu' || e.key === 'F2' || (e.key === 'F10' && e.shiftKey)) {
 				e.preventDefault();
-				this.openEditor(gid);
+				this.openEditor(gid, { fromKeyboard: true });
+			}
+			else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+				e.preventDefault();
+				let forward = (e.key === 'ArrowRight') !== rtl;
+				let items = this._focusableItems();
+				let target = items[items.indexOf(header) + (forward ? 1 : -1)];
+				if (target && target.getAttribute('data-id') === LIBRARY_TAB_ID) this.tabs.moveFocus('first');
+				else if (target) target.focus();
 			}
 		}
 
@@ -1123,13 +1258,13 @@ var ZTG_WindowController = (function () {
 		// Group editor bubble
 		// ------------------------------------------------------------------
 
-		openEditor(groupId, { isNew = false, retries = 10 } = {}) {
+		openEditor(groupId, { isNew = false, fromKeyboard = false, retries = 10 } = {}) {
 			let group = this.store.get(groupId);
 			if (!group) return;
 			let header = this._headers.get(groupId);
 			if (!header || !header.isConnected) {
 				// The tab may not be rendered yet (React renders asynchronously)
-				if (retries > 0) this._setTimeout(() => this.openEditor(groupId, { isNew, retries: retries - 1 }), 30);
+				if (retries > 0) this._setTimeout(() => this.openEditor(groupId, { isNew, fromKeyboard, retries: retries - 1 }), 30);
 				return;
 			}
 			this.closeEditor();
@@ -1214,7 +1349,7 @@ var ZTG_WindowController = (function () {
 					// fall back to fixed positioning
 				}
 			}
-			this._editor = { el: editor, groupId, input, openedAt: Date.now(), unsubscribe: this.store.subscribe(() => {
+			this._editor = { el: editor, groupId, input, fromKeyboard, openedAt: Date.now(), unsubscribe: this.store.subscribe(() => {
 				if (!this.store.has(groupId)) this.closeEditor();
 				else sync();
 			}) };
@@ -1289,9 +1424,12 @@ var ZTG_WindowController = (function () {
 			if (e.key === 'Escape' || (e.key === 'Enter' && e.target === this._editor.input)) {
 				e.preventDefault();
 				e.stopPropagation();
-				let header = this._headers.get(this._editor.groupId);
+				let { groupId, fromKeyboard } = this._editor;
 				this.closeEditor();
-				if (header) header.focus();
+				// Return focus where it came from: the chip, or the tab content
+				let header = this._headers.get(groupId);
+				if (fromKeyboard && header) header.focus();
+				else if (typeof this.tabs.refocus === 'function') this.tabs.refocus();
 			}
 		}
 
