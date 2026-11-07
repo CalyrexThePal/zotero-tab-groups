@@ -1,0 +1,12 @@
+{
+  "name": "zotero-tab-groups",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Chrome-style tab groups for Zotero 10",
+  "license": "AGPL-3.0-or-later",
+  "scripts": {
+    "build": "node scripts/build.js",
+    "test": "node --test test/model.test.js",
+    "test:ui": "node test/harness/build-harness.js && node test/ui.test.js"
+  }
+}
