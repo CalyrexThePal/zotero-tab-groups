@@ -4,7 +4,7 @@
 			"updates": [
 				{
 					"version": "1.0.0",
-					"update_link": "https://github.com/YOUR-GITHUB-USER/zotero-tab-groups/releases/download/v1.0.0/zotero-tab-groups-1.0.0.xpi",
+					"update_link": "https://github.com/CalyrexThePal/zotero-tab-groups/releases/download/v1.0.0/zotero-tab-groups-1.0.0.xpi",
 					"applications": {
 						"zotero": {
 							"strict_min_version": "10.0",
