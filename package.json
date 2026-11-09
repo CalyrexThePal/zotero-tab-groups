@@ -1,6 +1,6 @@
 {
   "name": "zotero-tab-groups",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Chrome-style tab groups for Zotero 10",
   "license": "AGPL-3.0-or-later",
