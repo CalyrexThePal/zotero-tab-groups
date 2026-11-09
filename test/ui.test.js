@@ -212,6 +212,54 @@ test('dragging an ungrouped tab between two members adds it to the group', async
 	await page.close();
 });
 
+test('starting a drag in small steps does not leave tab text selected', async () => {
+	let page = await setup();
+	let [a, b, c, d, e] = await ids(page);
+	await group(page, [b, c], 'G');
+	let name = await page.locator(tabSel(e) + ' .tab-name').boundingBox();
+	let x = name.x + name.width / 2, y = name.y + name.height / 2;
+	await page.mouse.move(x, y);
+	await page.mouse.down();
+	// Tiny first moves (below the drag threshold) are how a real hand starts
+	for (let i = 1; i <= 3; i++) await page.mouse.move(x - i * 2, y);
+	await page.mouse.move(x - 200, y, { steps: 10 });
+	assert.equal(await page.evaluate(() => String(getSelection())), '', 'no selection while dragging');
+	await page.mouse.up();
+	await page.waitForTimeout(320);
+	assert.equal(await page.evaluate(() => String(getSelection())), '', 'no selection after the drop');
+	assert.equal(await page.evaluate(id => getComputedStyle(document.querySelector(`.tabs-wrapper .tab[data-id="${id}"]`)).userSelect, a), 'none');
+	await page.close();
+});
+
+test('while a tab hovers over a group, the group bar is continuous through the gap it will fill', async () => {
+	let page = await setup();
+	let [a, b, c, d, e] = await ids(page);
+	let gid = await group(page, [b, c, d], 'G');
+	let from = await center(page, tabSel(e));
+	let cBox = (await center(page, tabSel(c))).box;
+	// Hold e so it would land between c and d (inside the group), displaced from its slot
+	await drag(page, from, cBox.x + cBox.width + 60, { release: false });
+	let bridge = () => page.evaluate(() => Array.from(document.querySelectorAll('.tabs-wrapper .tabs > *'))
+		.filter(el => el.style.getPropertyValue('--ztg-bridge'))
+		.map(el => ({ id: el.dataset.id || 'H', px: parseFloat(el.style.getPropertyValue('--ztg-bridge')), right: parseFloat(getComputedStyle(el, '::after').right) })));
+	let during = await bridge();
+	assert.equal(during.length, 1, 'exactly one element bridges the hole');
+	assert.equal(during[0].id, c, 'the member right before the slot bridges it');
+	assert.ok(during[0].px >= from.box.width, `bridge spans the dragged tab (${during[0].px})`);
+	assert.ok(during[0].right <= -during[0].px, `bar actually extends (${during[0].right})`);
+	// Dragging out of the group removes the bridge again
+	await page.mouse.move(from.x + 300, from.y, { steps: 8 });
+	assert.deepEqual(await bridge(), []);
+	await page.mouse.move(cBox.x + cBox.width + 60, from.y, { steps: 8 });
+	assert.equal((await bridge()).length, 1);
+	await page.mouse.up();
+	await page.waitForTimeout(320);
+	assert.deepEqual(await bridge(), [], 'bridge is cleaned up after the drop');
+	assert.equal(await page.evaluate(id => Zotero_Tabs._getTab(id).tab.data.tabGroupId, e), gid);
+	assert.deepEqual(page.errors, []);
+	await page.close();
+});
+
 test('dragging a member far outside the group removes it from the group', async () => {
 	let page = await setup();
 	let [a, b, c, d, e, f] = await ids(page);

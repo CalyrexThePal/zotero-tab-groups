@@ -977,6 +977,15 @@ var ZTG_WindowController = (function () {
 			let strip = this._getStrip();
 			if (!strip) return false;
 			this.closeEditor();
+			// Native dragging is disabled, so pressing on a tab name would
+			// otherwise leave a sliver of text selected behind the drag
+			try {
+				let selection = this.win.getSelection();
+				if (selection) selection.removeAllRanges();
+			}
+			catch (e) {
+				// not worth failing a drag over
+			}
 
 			let unitKind = header ? 'group' : 'tab';
 			let groupId = header ? header.getAttribute('data-ztg-group-id') : null;
@@ -1089,6 +1098,7 @@ var ZTG_WindowController = (function () {
 
 			if (d.unitKind === 'tab') {
 				d.currentGroupId = res.groupId;
+				this._setBridge(d, res);
 				let el = d.unitEls[0];
 				let g = res.groupId ? this.store.get(res.groupId) : null;
 				this._setAttr(el, 'ztg-group', g ? g.id : null);
@@ -1102,6 +1112,20 @@ var ZTG_WindowController = (function () {
 					this._setAttr(s.el, 'ztg-last', !!s.gid && (i === seq.length - 1 || seq[i + 1].gid !== s.gid));
 				});
 			}
+		}
+
+		/**
+		 * While a tab hovers over a group, the neighbors open a gap for it, but
+		 * the tab itself is usually held away from that gap, which would leave
+		 * a hole in the group's color bar. The member (or chip) right before
+		 * the slot stretches its bar across the gap instead.
+		 */
+		_setBridge(d, res) {
+			let prev = res.groupId ? d.items[res.index - 1] : null;
+			let el = prev && prev.groupId === res.groupId ? prev.el : null;
+			if (d.bridgeEl && d.bridgeEl !== el) d.bridgeEl.style.removeProperty('--ztg-bridge');
+			d.bridgeEl = el;
+			if (el) el.style.setProperty('--ztg-bridge', `${d.unitSize + d.gap}px`);
 		}
 
 		_dragFrame() {
@@ -1172,6 +1196,7 @@ var ZTG_WindowController = (function () {
 				if (!glideBack) d.strip.removeAttribute('ztg-dragging');
 				for (let item of d.items) item.el.style.removeProperty('transform');
 				for (let el of d.unitEls) el.style.removeProperty('transform');
+				if (d.bridgeEl) d.bridgeEl.style.removeProperty('--ztg-bridge');
 				this._decorate();
 				if (glideBack) {
 					this._setTimeout(() => {

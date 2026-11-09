@@ -54,7 +54,8 @@
 	content: "";
 	position: absolute;
 	inset-inline-start: 0;
-	inset-inline-end: -4px;
+	/* --ztg-bridge: width of the gap a dragged tab is about to fill */
+	inset-inline-end: calc(-4px - var(--ztg-bridge, 0px));
 	bottom: -3px;
 	height: 2px;
 	background: var(--ztg-c);
@@ -214,7 +215,7 @@
 	content: "";
 	position: absolute;
 	inset-inline-start: 50%;
-	inset-inline-end: -4px;
+	inset-inline-end: calc(-4px - var(--ztg-bridge, 0px));
 	bottom: -3px;
 	height: 2px;
 	background: var(--ztg-c);
@@ -234,6 +235,12 @@
  * Dragging
  * ------------------------------------------------------------------- */
 #tab-bar-container .tabs[ztg-dragging] {
+	user-select: none;
+}
+
+/* Native dragging is replaced, so a press-and-move on a tab name would start
+ * a text selection; tab titles are never meant to be selected */
+#tab-bar-container .tabs > .tab {
 	user-select: none;
 }
 
