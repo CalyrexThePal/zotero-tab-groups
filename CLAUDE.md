@@ -73,7 +73,7 @@ updates.json              Zotero auto-update manifest
 
 - The version is in **two** places that must match: `version` in `src/manifest.json` (what the build and Zotero read) and `version` in `package.json`. Update `updates.json` too, with the new version, `update_link`, and the Zotero range.
 - The `.xpi` is built as `build/zotero-tab-groups-<version>.xpi`. `build/` is git-ignored, so do not commit it.
-- `src/manifest.json` and `updates.json` still contain the placeholder `YOUR-GITHUB-USER` in their update URLs. Replace it only when the real repository location is known. Do not invent one.
+- The update URLs in `src/manifest.json` and `updates.json` point at `CalyrexThePal/zotero-tab-groups` on GitHub (public, `main` is the default branch). Keep them pointed there when you change the release process.
 - After confirming behavior in a newer Zotero, raise `strict_max_version` in both `src/manifest.json` and `updates.json`. Do not widen it without testing.
 
 ## Things to be careful about

@@ -100,7 +100,7 @@ Then restart Zotero. Uninstalling the plugin clears this pref automatically.
 
 ## Publishing updates
 
-`src/manifest.json` and `updates.json` use `YOUR-GITHUB-USER` as a placeholder. If you publish the plugin, replace it with the real repository location so Zotero's automatic updates work.
+`src/manifest.json` and `updates.json` point at this repository (`CalyrexThePal/zotero-tab-groups`), so Zotero's automatic update check looks for new versions here. When you release a new version, update the version number and `update_link` in `updates.json`, and attach the `.xpi` to a GitHub release with the matching tag.
 
 ## License
 
