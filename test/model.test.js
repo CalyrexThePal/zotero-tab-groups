@@ -84,12 +84,34 @@ test('computeDrop: right after a header joins the group', () => {
 	assert.equal(r.groupId, 'a');
 });
 
-test('computeDrop: right after a collapsed header does not join', () => {
+// Collapsed strip: [T1][H(a) collapsed][T2]; slot starts 0, 104, 148, 252
+function collapsedStrip() {
 	let items = strip();
 	items[1].collapsed = true;
 	items.splice(2, 2);
-	let r = M.computeDrop({ items, base: 0, gap: 4, unitKind: 'tab', unitSize: 100, desiredStart: 150, currentGroupId: null });
+	return items;
+}
+
+test('computeDrop: right after a collapsed header, past the chip, does not join', () => {
+	let r = M.computeDrop({ items: collapsedStrip(), base: 0, gap: 4, unitKind: 'tab', unitSize: 100, desiredStart: 150, currentGroupId: null });
 	assert.equal(r.index, 2);
+	assert.equal(r.groupId, null);
+});
+
+test('computeDrop: a tab held over a collapsed chip joins that group, landing after the chip', () => {
+	for (let desiredStart of [104, 120, 144]) {
+		let r = M.computeDrop({ items: collapsedStrip(), base: 0, gap: 4, unitKind: 'tab', unitSize: 100, desiredStart, currentGroupId: null });
+		assert.equal(r.index, 2, `index at ${desiredStart}`);
+		assert.equal(r.groupId, 'a', `group at ${desiredStart}`);
+	}
+	// Left of the chip stays out, in the slot before it
+	let r = M.computeDrop({ items: collapsedStrip(), base: 0, gap: 4, unitKind: 'tab', unitSize: 100, desiredStart: 90, currentGroupId: null });
+	assert.equal(r.index, 1);
+	assert.equal(r.groupId, null);
+});
+
+test('computeDrop: a whole group dragged over a collapsed chip never joins it', () => {
+	let r = M.computeDrop({ items: collapsedStrip(), base: 0, gap: 4, unitKind: 'group', unitSize: 100, desiredStart: 120, currentGroupId: null });
 	assert.equal(r.groupId, null);
 });
 

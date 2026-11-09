@@ -260,6 +260,30 @@ test('while a tab hovers over a group, the group bar is continuous through the g
 	await page.close();
 });
 
+test('a tab dropped on a collapsed group\'s chip joins the group at its end', async () => {
+	let page = await setup();
+	let [a, b, c, d, e, f] = await ids(page);
+	let gid = await group(page, [b, c], 'Pair', { color: 'red' });
+	await page.evaluate(g => __ztg.controller.toggleCollapsed(g, true), gid);
+	await page.waitForTimeout(300);
+	let from = await center(page, tabSel(e));
+	let chip = (await center(page, headerSel(gid))).box;
+	// Hold e so that its start edge is over the chip's middle
+	await drag(page, from, chip.x + chip.width / 2 + from.box.width / 2, { release: false });
+	assert.equal(await page.evaluate(() => __ztg.controller._drag.result.groupId), gid, 'previews joining');
+	await shot(page, '06-drop-on-collapsed-chip');
+	await page.mouse.up();
+	await page.waitForTimeout(320);
+	assert.deepEqual(await ids(page), [a, b, c, e, d, f]);
+	assert.deepEqual(await groupsOf(page), [null, gid, gid, gid, null, null]);
+	// The dragged tab is the selected one, and a selected tab can't hide
+	// inside a collapsed group, so the group opens (like Chrome)
+	assert.equal(await page.evaluate(g => __ztg.store.get(g).collapsed, gid), false);
+	assert.equal(await page.locator(tabSel(e)).isVisible(), true);
+	assert.deepEqual(page.errors, []);
+	await page.close();
+});
+
 test('dragging a member far outside the group removes it from the group', async () => {
 	let page = await setup();
 	let [a, b, c, d, e, f] = await ids(page);

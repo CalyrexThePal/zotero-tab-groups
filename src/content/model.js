@@ -193,9 +193,24 @@ var ZTG_Model = (function () {
 		if (unitKind === 'tab') {
 			let prev = items[best - 1];
 			let next = items[best];
-			if (prev && prev.kind === 'header') {
+			// A collapsed group's tabs are hidden, so it can't be dropped "into":
+			// instead a tab whose start edge is over the chip joins the group
+			// (at its end). The slot right after the chip is where it lands.
+			let chip = -1;
+			for (let k = 0; k < items.length; k++) {
+				let it = items[k];
+				if (it.kind === 'header' && it.collapsed
+					&& desiredStart >= slotStarts[k] && desiredStart <= slotStarts[k] + it.size) {
+					chip = k;
+					break;
+				}
+			}
+			if (chip !== -1) {
+				best = chip + 1;
+				groupId = items[chip].groupId;
+			}
+			else if (prev && prev.kind === 'header') {
 				// Right after a group's chip: first tab of that group
-				// (a collapsed group can't take tabs; its tabs are hidden)
 				groupId = prev.collapsed ? null : prev.groupId;
 			}
 			else if (prev && prev.kind === 'tab' && prev.groupId !== null) {
