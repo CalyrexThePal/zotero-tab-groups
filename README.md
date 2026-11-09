@@ -6,6 +6,12 @@ Chrome-style tab groups for **Zotero 10**. You can color-code, name, collapse an
 
 > The screenshot comes from the test harness. It renders Zotero 10's real tab bar component with approximate theme colors, so the plugin looks slightly different inside Zotero itself.
 
+## Disclaimer
+
+**This project was built entirely with Claude, an AI model made by Anthropic.** The code, tests and documentation were written by Claude, with direction from its author, and nothing here is a product of Zotero or Anthropic.
+
+**The software is provided "as is", without warranty of any kind**, express or implied, including but not limited to warranties of merchantability, fitness for a particular purpose, and non-infringement. The authors and contributors accept no liability for any claim, damage, data loss or other harm arising from its use. Back up your Zotero library and tab session before you install and test it. Use it at your own risk.
+
 ## Features
 
 | Chrome behavior | In this plugin |

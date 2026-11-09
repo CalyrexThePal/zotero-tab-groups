@@ -3,5 +3,9 @@ build/
 test/harness/dist/
 test/output/
 *.log
+*.xpi
+.env
+.env.*
+.claude/settings.local.json
 .DS_Store
 Thumbs.db
