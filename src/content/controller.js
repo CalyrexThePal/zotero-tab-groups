@@ -835,8 +835,14 @@ var ZTG_WindowController = (function () {
 
 		_onDragStart(e) {
 			// Zotero's native HTML5 tab dragging is replaced by our pointer-based one
+			// Gecko reports the drag source as the text node when a drag starts
+			// on a tab's title, and a text node has no closest(), so resolve it
+			// to its element first. Missing this lets the native drag run, which
+			// cancels our pointer events (pointercancel) and the drag never starts.
 			let strip = this._getStrip();
-			if (strip && e.target && e.target.closest && e.target.closest('.tab') && strip.contains(e.target)) {
+			let node = e.target;
+			let el = node && node.nodeType === 1 ? node : (node && node.parentElement);
+			if (strip && el && strip.contains(el) && el.closest('.tab, .ztg-header')) {
 				e.preventDefault();
 				e.stopPropagation();
 			}

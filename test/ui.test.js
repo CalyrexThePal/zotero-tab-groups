@@ -260,6 +260,32 @@ test('while a tab hovers over a group, the group bar is continuous through the g
 	await page.close();
 });
 
+test('native dragstart is cancelled whatever part of a tab it starts on (Gecko targets the title text node)', async () => {
+	let page = await setup();
+	let [a, b] = await ids(page);
+	let gid = await group(page, [b], 'G');
+	let result = await page.evaluate(({ a, gid }) => {
+		let fire = (node) => {
+			let ev = new DragEvent('dragstart', { bubbles: true, cancelable: true });
+			node.dispatchEvent(ev);
+			return ev.defaultPrevented;
+		};
+		let tab = document.querySelector(`.tabs-wrapper .tab[data-id="${a}"]`);
+		let nameText = tab.querySelector('.tab-name').firstChild;
+		let chipText = document.querySelector(`.ztg-header[data-ztg-group-id="${gid}"] .ztg-title`).firstChild;
+		return {
+			nameTextNode: nameText.nodeType === 3 && fire(nameText),
+			nameElement: fire(tab.querySelector('.tab-name')),
+			icon: fire(tab.querySelector('.tab-icon')),
+			chipTextNode: !chipText || fire(chipText),
+			// Anything outside the strip is none of our business
+			content: !fire(document.getElementById('content')),
+		};
+	}, { a, gid });
+	assert.deepEqual(result, { nameTextNode: true, nameElement: true, icon: true, chipTextNode: true, content: true });
+	await page.close();
+});
+
 test('a tab dropped on a collapsed group\'s chip joins the group at its end', async () => {
 	let page = await setup();
 	let [a, b, c, d, e, f] = await ids(page);
