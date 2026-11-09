@@ -31,7 +31,7 @@ Not included, by design: *Move group to new window*, saved groups, and syncing g
 
 ## Install
 
-1. Download `zotero-tab-groups-1.0.1.xpi` (or build it, see below).
+1. Download `zotero-tab-groups-1.0.2.xpi` (or build it, see below).
 2. In Zotero, open **Tools → Plugins**, click the gear icon, choose **Install Plugin From File…**, and select the `.xpi`.
 3. Open some PDFs, right-click a tab, and choose **Add Tab to New Group**.
 

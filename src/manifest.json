@@ -1,7 +1,7 @@
 {
 	"manifest_version": 2,
 	"name": "Tab Groups",
-	"version": "1.0.1",
+	"version": "1.0.2",
 	"description": "Chrome-style tab groups for Zotero: color-coded, collapsible, drag-and-drop tab groups that survive restarts.",
 	"author": "Xuan",
 	"icons": {
