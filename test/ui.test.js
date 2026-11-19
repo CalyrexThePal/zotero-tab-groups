@@ -607,3 +607,49 @@ test('tabs restored into a collapsed group appear collapsed without animating', 
 	assert.deepEqual(widths, [0, 0]);
 	await page.close();
 });
+
+test('a click that wobbles a few pixels (trackpad press) is still a click, not a drag', async () => {
+	let page = await setup();
+	let [a, b] = await ids(page);
+	let p = await center(page, tabSel(b));
+	await page.mouse.move(p.x, p.y);
+	await page.mouse.down();
+	await page.mouse.move(p.x + 3, p.y + 9);
+	await page.mouse.up();
+	await page.waitForTimeout(100);
+	assert.equal(await page.evaluate(() => Zotero_Tabs._selectedID), b);
+	assert.deepEqual((await ids(page)).slice(0, 2), [a, b]);
+	await page.close();
+});
+
+test('Ctrl+press (macOS secondary click) never starts a drag', async () => {
+	let page = await setup();
+	let [a, b] = await ids(page);
+	let p = await center(page, tabSel(a));
+	await page.mouse.move(p.x, p.y);
+	await page.keyboard.down('Control');
+	await page.mouse.down();
+	await page.mouse.move(p.x + 200, p.y, { steps: 8 });
+	let dragging = await page.evaluate(() => document.querySelector('.tabs-wrapper > .tabs').hasAttribute('ztg-dragging'));
+	await page.mouse.up();
+	await page.keyboard.up('Control');
+	assert.equal(dragging, false);
+	assert.deepEqual((await ids(page)).slice(0, 2), [a, b]);
+	await page.close();
+});
+
+test('scroll gestures during a drag do not scroll the strip', async () => {
+	let many = Array.from({ length: 18 }, (_, i) => `Paper ${i + 1} – Some long title`);
+	let page = await setup({ tabs: many, width: 900 });
+	let all = await ids(page);
+	let from = await center(page, tabSel(all[0]));
+	await drag(page, from, from.x + 60, { release: false });
+	let before = await page.evaluate(() => document.querySelector('.tabs-wrapper > .tabs').scrollLeft);
+	await page.mouse.wheel(300, 0);
+	await page.waitForTimeout(150);
+	let after = await page.evaluate(() => document.querySelector('.tabs-wrapper > .tabs').scrollLeft);
+	await page.mouse.up();
+	await page.waitForTimeout(320);
+	assert.equal(after, before);
+	await page.close();
+});

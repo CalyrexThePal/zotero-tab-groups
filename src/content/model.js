@@ -32,6 +32,11 @@ var ZTG_Model = (function () {
 	 *   normalization (default: all)
 	 * @returns {Array<string|null>} normalized group ids (same length)
 	 */
+	// Pixels of horizontal travel before a press becomes a drag. Slightly above
+	// a mouse's usual jitter so trackpad clicks (the finger rolls as it presses)
+	// still count as clicks.
+	const DRAG_THRESHOLD = 5;
+
 	function normalize(groupIds, groupExists, changed) {
 		let out = groupIds.map(g => (g && groupExists(g) ? g : null));
 		let isChanged = i => !changed || !!changed[i];
@@ -248,7 +253,21 @@ var ZTG_Model = (function () {
 		return next.kind === 'header' ? next.firstTabId : next.tabId;
 	}
 
-	return { COLORS, normalize, changedSince, pickColor, computeDrop, insertionAnchor };
+	/**
+	 * Whether a press-and-move has gone far enough to count as a drag. Only
+	 * horizontal travel counts: tabs move along the strip, and the slight
+	 * vertical wobble of a finger pressing a trackpad (or a click that settles
+	 * a few pixels down) must not turn a click into a drag.
+	 *
+	 * @param {number} dx
+	 * @param {number} dy unused; accepted so callers can pass the raw delta
+	 * @returns {boolean}
+	 */
+	function exceedsDragThreshold(dx, dy) { // eslint-disable-line no-unused-vars
+		return Math.abs(dx) >= DRAG_THRESHOLD;
+	}
+
+	return { COLORS, normalize, changedSince, pickColor, computeDrop, insertionAnchor, exceedsDragThreshold, DRAG_THRESHOLD };
 })();
 
 if (typeof module !== 'undefined') {
