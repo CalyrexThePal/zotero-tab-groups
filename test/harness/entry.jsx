@@ -1,11 +1,15 @@
 /*
  * Browser harness: renders Zotero 10's real TabBar React component, driven by
  * a Zotero_Tabs stand-in, and attaches the plugin's window controller to it.
+ * The controller and store are the plugin's own TypeScript sources, bundled
+ * here by esbuild.
  */
-/* global ZTG_Store, ZTG_WindowController, FTL_MESSAGES */
+/* global FTL_MESSAGES */
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { createZoteroTabs } from './zotero-tabs-shim.js';
+import { Store } from '../../src/content/store';
+import { WindowController } from '../../src/content/controller';
 
 window.Zotero = {
 	rtl: false,
@@ -46,8 +50,8 @@ let prefJSON = '{}';
 window.__prefs = { get: () => prefJSON, set: v => (prefJSON = v) };
 
 function start() {
-	const store = new ZTG_Store({ read: () => prefJSON, write: v => (prefJSON = v) });
-	const controller = new ZTG_WindowController(window, {
+	const store = new Store({ read: () => prefJSON, write: v => (prefJSON = v) });
+	const controller = new WindowController(window, {
 		store,
 		t,
 		saveSession: () => Zotero_Tabs.sessionSaves++,

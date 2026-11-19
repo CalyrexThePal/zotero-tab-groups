@@ -6,15 +6,19 @@
   "license": "AGPL-3.0-or-later",
   "scripts": {
     "build": "node scripts/build.js",
-    "test": "node --test test/model.test.js",
+    "typecheck": "tsc -p .",
+    "test": "node --import tsx --test test/model.test.js test/store.test.js test/bundle.test.js",
     "test:ui": "node test/harness/build-harness.js && node test/ui.test.js"
   },
   "devDependencies": {
     "classnames": "^2.5.1",
     "esbuild": "^0.24.2",
+    "playwright": "~1.63.0",
     "prop-types": "^15.8.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "sass": "^1.108.1"
+    "sass": "^1.108.1",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3"
   }
 }

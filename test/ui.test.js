@@ -296,7 +296,7 @@ test('a tab dropped on a collapsed group\'s chip joins the group at its end', as
 	let chip = (await center(page, headerSel(gid))).box;
 	// Hold e so that its start edge is over the chip's middle
 	await drag(page, from, chip.x + chip.width / 2 + from.box.width / 2, { release: false });
-	assert.equal(await page.evaluate(() => __ztg.controller._drag.result.groupId), gid, 'previews joining');
+	assert.equal(await page.evaluate(() => __ztg.controller.drag.state.result.groupId), gid, 'previews joining');
 	await shot(page, '06-drop-on-collapsed-chip');
 	await page.mouse.up();
 	await page.waitForTimeout(320);

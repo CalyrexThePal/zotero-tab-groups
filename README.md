@@ -44,16 +44,16 @@ Zotero 10 draws its tab bar with React (`components/tabBar.jsx`), based on the s
 - **Data**
   - Each tab stores its group in `tab.data.tabGroupId`. Zotero already writes `tab.data` to `session.json` and gives it back on restore, so membership is saved and restored together with the tab order.
   - Group metadata (`title`, `color`, `collapsed`) is saved as JSON in the pref `extensions.zotero-tab-groups.groups`.
-- **Rules** (`src/content/model.js`, pure and unit-tested)
+- **Rules** (`src/content/model.ts`, pure and unit-tested)
   - The plugin wraps `Zotero_Tabs._update()`, so the rules run before every render. They apply no matter what moved a tab: Zotero's own *Move to Start/End*, the tabs menu, a reader opening at an index, and so on.
   - *Spatial inclusion*: a tab that was just opened or moved between two tabs of the same group joins that group.
   - *Contiguity*: if a group gets split, the part that wasn't moved keeps the group.
-- **Drawing** (`src/content/controller.js`)
+- **Drawing** (`src/content/controller.ts`, `decorate.ts`, `drag.ts`, `editor.ts`)
   - After each React commit, a MutationObserver inserts the chip elements and sets `ztg-*` attributes on Zotero's tab elements.
   - All styling is in `src/content/tabGroups.css` and keyed on those attributes. Disabling the plugin removes every trace.
 - **Dragging**
   - Zotero's native HTML5 tab drag is replaced with pointer-event dragging.
-  - Positions are computed once when the drag starts (`computeDrop` in `model.js`), and the tabs are moved with CSS transforms while you drag.
+  - Positions are computed once when the drag starts (`computeDrop` in `model.ts`), and the tabs are moved with CSS transforms while you drag.
   - On drop, the new order is applied through `Zotero_Tabs.move()`. The transforms are swapped for the real layout in the same frame React re-renders, so nothing flickers.
 - **Context menu**: added through Zotero's official `Zotero.MenuManager` API (target `main/tab`).
 
@@ -61,14 +61,19 @@ Zotero 10 draws its tab bar with React (`components/tabBar.jsx`), based on the s
 src/
   bootstrap.js            plugin lifecycle (startup/shutdown, window hooks)
   manifest.json, prefs.js
-  content/model.js        membership rules, color picking, drop-slot math
-  content/store.js        group metadata store (prefs-backed)
-  content/controller.js   per-window integration with Zotero_Tabs and the tab strip
-  content/plugin.js       shared store, context menu, window management
+  content/model.ts        membership rules, color picking, drop-slot math
+  content/store.ts        group metadata store (prefs-backed)
+  content/zoteroTabs.ts   the only code that touches Zotero_Tabs internals
+  content/controller.ts   per-window wiring, membership rules, group actions
+  content/decorate.ts     group chips and ztg-* attributes on the tab strip
+  content/drag.ts         pointer-driven dragging
+  content/editor.ts       group editor bubble
+  content/menu.ts         tab context menu
+  content/plugin.ts       shared store and window management
   content/tabGroups.css
   locale/en-US/zotero-tab-groups.ftl
 test/
-  model.test.js           unit tests (node:test)
+  model.test.js, store.test.js, bundle.test.js   unit tests (node:test)
   ui.test.js              browser tests (Playwright) against the harness
   harness/                Zotero 10's real TabBar component + a Zotero_Tabs stand-in
 ```
@@ -77,16 +82,17 @@ test/
 
 ```sh
 npm install
-npm test           # unit tests for the model
-npm run test:ui    # builds the harness, then runs 22 browser tests with real mouse input
-npm run build      # -> build/zotero-tab-groups-<version>.xpi
+npm run typecheck # type-check the TypeScript sources
+npm test           # unit tests (model, store, built bundle)
+npm run test:ui    # builds the harness, then runs the browser tests with real mouse input
+npm run build      # bundles the TypeScript and packages -> build/zotero-tab-groups-<version>.xpi
 ```
 
-The UI tests run against `test/harness/`. The harness renders **Zotero 10.0's actual `tabBar.jsx`** (vendored in `test/harness/vendor/`, with the source commit recorded) and Zotero's tab bar SCSS. A small `Zotero_Tabs` stand-in follows the `add`/`close`/`move`/`select`/`moveFocus` logic of `tabs.js`. The plugin's content scripts are loaded into it unmodified.
+The UI tests run against `test/harness/`. The harness renders **Zotero 10.0's actual `tabBar.jsx`** (vendored in `test/harness/vendor/`, with the source commit recorded) and Zotero's tab bar SCSS. A small `Zotero_Tabs` stand-in follows the `add`/`close`/`move`/`select`/`moveFocus` logic of `tabs.js`. The plugin's own TypeScript sources (`controller.ts`, `store.ts` and what they import) are bundled into the harness, and `tabGroups.css` is copied unmodified.
 
 The harness runs in Chromium, not in Zotero's Gecko engine, so test inside Zotero before relying on the plugin. Context-menu entries (`Zotero.MenuManager`) exist only inside Zotero. To debug inside Zotero, turn on **Help → Debug Output Logging**; the plugin's messages start with `Tab Groups:`.
 
-To try changes without rebuilding, point Zotero at the source folder: in the profile's `extensions/` directory, create a text file named `zotero-tab-groups@zotero-tab-groups` that contains the absolute path to `src/`. Then restart Zotero with `-purgecaches`.
+To try changes without installing the .xpi each time, run `npm run build`, then point Zotero at the staged folder: in the profile's `extensions/` directory, create a text file named `zotero-tab-groups@zotero-tab-groups` that contains the absolute path to `build/stage/`. Then restart Zotero with `-purgecaches`. Re-run `npm run build` after each change.
 
 ## Resetting
 

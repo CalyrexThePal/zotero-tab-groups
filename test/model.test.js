@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const M = require('../src/content/model.js');
+const M = require('../src/content/model');
 
 const exists = id => ['a', 'b', 'c'].includes(id);
 

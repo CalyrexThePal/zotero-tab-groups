@@ -1,20 +1,45 @@
 #!/usr/bin/env node
 /*
- * Packages src/ into build/zotero-tab-groups-<version>.xpi
- * (an .xpi is a zip archive with manifest.json at its root).
- * Uses the system `zip` if available, otherwise a tiny built-in zip writer.
+ * Builds build/zotero-tab-groups-<version>.xpi (a zip archive with
+ * manifest.json at its root):
+ *
+ *   1. copies the static files of src/ (everything except TypeScript) into
+ *      build/stage/,
+ *   2. bundles src/content/index.ts into build/stage/content/plugin.js
+ *      (esbuild, IIFE, global ZTG_Bundle; bootstrap.js loads it),
+ *   3. zips build/stage/ with the system `zip`, or a built-in zip writer if
+ *      that isn't installed (e.g. Windows).
  */
 'use strict';
 const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
 const { execFileSync } = require('child_process');
+const esbuild = require('esbuild');
 
 const root = path.resolve(__dirname, '..');
 const src = path.join(root, 'src');
 const out = path.join(root, 'build');
+const stage = path.join(out, 'stage');
 const manifest = JSON.parse(fs.readFileSync(path.join(src, 'manifest.json'), 'utf8'));
 const xpi = path.join(out, `zotero-tab-groups-${manifest.version}.xpi`);
+
+// TypeScript sources and type declarations are compiled into the bundle, not shipped
+const isSource = rel => rel.endsWith('.ts') || rel.startsWith('types/');
+
+function copyStatic(dir, base = dir) {
+	for (let entry of fs.readdirSync(dir, { withFileTypes: true })) {
+		let full = path.join(dir, entry.name);
+		let rel = path.relative(base, full).split(path.sep).join('/');
+		if (entry.isDirectory()) {
+			if (!isSource(rel + '/')) copyStatic(full, base);
+		}
+		else if (!isSource(rel)) {
+			fs.mkdirSync(path.dirname(path.join(stage, rel)), { recursive: true });
+			fs.copyFileSync(full, path.join(stage, rel));
+		}
+	}
+}
 
 function listFiles(dir, base = dir) {
 	let files = [];
@@ -42,7 +67,7 @@ function writeZip(file, entries) {
 	let central = [];
 	let offset = 0;
 	for (let name of entries) {
-		let data = fs.readFileSync(path.join(src, name));
+		let data = fs.readFileSync(path.join(stage, name));
 		let deflated = zlib.deflateRawSync(data, { level: 9 });
 		let nameBuf = Buffer.from(name, 'utf8');
 		let crc = crc32(data);
@@ -84,15 +109,33 @@ function writeZip(file, entries) {
 	fs.writeFileSync(file, Buffer.concat([...parts, cenBuf, end]));
 }
 
-fs.mkdirSync(out, { recursive: true });
-if (fs.existsSync(xpi)) fs.unlinkSync(xpi);
-const files = listFiles(src);
-let usedZip = false;
-try {
-	execFileSync('zip', ['-q', '-9', '-X', xpi, ...files], { cwd: src, stdio: 'ignore' });
-	usedZip = true;
+async function main() {
+	fs.rmSync(stage, { recursive: true, force: true });
+	fs.mkdirSync(stage, { recursive: true });
+	if (fs.existsSync(xpi)) fs.unlinkSync(xpi);
+	copyStatic(src);
+	await esbuild.build({
+		entryPoints: [path.join(src, 'content/index.ts')],
+		bundle: true,
+		format: 'iife',
+		globalName: 'ZTG_Bundle',
+		target: 'firefox115',
+		outfile: path.join(stage, 'content/plugin.js'),
+		logLevel: 'warning',
+	});
+	const files = listFiles(stage);
+	let usedZip = false;
+	try {
+		execFileSync('zip', ['-q', '-9', '-X', xpi, ...files], { cwd: stage, stdio: 'ignore' });
+		usedZip = true;
+	}
+	catch (e) {
+		writeZip(xpi, files);
+	}
+	console.log(`Built ${path.relative(root, xpi)} (${files.length} files${usedZip ? '' : ', built-in zip'})`);
 }
-catch (e) {
-	writeZip(xpi, files);
-}
-console.log(`Built ${path.relative(root, xpi)} (${files.length} files${usedZip ? '' : ', built-in zip'})`);
+
+main().catch((e) => {
+	console.error(e);
+	process.exit(1);
+});
