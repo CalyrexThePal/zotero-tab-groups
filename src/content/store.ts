@@ -8,30 +8,45 @@
  * restored by Zotero together with the tabs themselves.
  */
 
-/* exported ZTG_Store */
-var ZTG_Store = class {
-	/**
-	 * @param {object} opts
-	 * @param {() => string} opts.read
-	 * @param {(json: string) => void} opts.write
-	 * @param {(fn: Function, ms: number) => any} [opts.setTimeout]
-	 */
-	constructor({ read, write, setTimeout: st }) {
+import { COLORS, pickColor, type GroupColor } from './model';
+
+export interface Group {
+	id: string;
+	title: string;
+	color: GroupColor;
+	collapsed: boolean;
+}
+
+export interface StoreChange {
+	type: 'create' | 'update' | 'remove';
+	id: string;
+}
+
+export interface StoreOptions {
+	read: () => string;
+	write: (json: string) => void;
+	setTimeout?: (fn: () => void, ms: number) => unknown;
+}
+
+export class Store {
+	private _read: () => string;
+	private _write: (json: string) => void;
+	private _setTimeout: (fn: () => void, ms: number) => unknown;
+	private _groups = new Map<string, Group>();
+	private _graveyard = new Map<string, Group>();
+	private _listeners = new Set<(change: StoreChange) => void>();
+	private _saveTimer: unknown = null;
+
+	constructor({ read, write, setTimeout: st }: StoreOptions) {
 		this._read = read;
 		this._write = write;
 		this._setTimeout = st || ((fn, ms) => setTimeout(fn, ms));
-		this._groups = new Map();
-		// Recently removed groups, kept for this session so "Undo Close Tab"
-		// can bring a closed group back with its name and color.
-		this._graveyard = new Map();
-		this._listeners = new Set();
-		this._saveTimer = null;
 		this.load();
 	}
 
-	load() {
+	load(): void {
 		this._groups.clear();
-		let data = {};
+		let data: any = {};
 		try {
 			data = JSON.parse(this._read() || '{}') || {};
 		}
@@ -45,21 +60,21 @@ var ZTG_Store = class {
 			this._groups.set(id, {
 				id,
 				title: typeof g.title === 'string' ? g.title : '',
-				color: ZTG_Model.COLORS.includes(g.color) ? g.color : 'grey',
+				color: (COLORS as readonly string[]).includes(g.color) ? g.color : 'grey',
 				collapsed: !!g.collapsed,
 			});
 		}
 	}
 
-	_serialize() {
-		let groups = {};
+	private _serialize() {
+		let groups: Record<string, Omit<Group, 'id'>> = {};
 		for (let [id, g] of this._groups) {
 			groups[id] = { title: g.title, color: g.color, collapsed: g.collapsed };
 		}
 		return JSON.stringify({ version: 1, groups });
 	}
 
-	_scheduleSave() {
+	private _scheduleSave() {
 		if (this._saveTimer) return;
 		this._saveTimer = this._setTimeout(() => {
 			this._saveTimer = null;
@@ -67,9 +82,9 @@ var ZTG_Store = class {
 		}, 250);
 	}
 
-	flush() {
+	flush(): void {
 		if (this._saveTimer) {
-			clearTimeout(this._saveTimer);
+			clearTimeout(this._saveTimer as any);
 			this._saveTimer = null;
 		}
 		try {
@@ -80,7 +95,7 @@ var ZTG_Store = class {
 		}
 	}
 
-	_emit(change) {
+	private _emit(change: StoreChange) {
 		for (let fn of this._listeners) {
 			try {
 				fn(change);
@@ -91,29 +106,31 @@ var ZTG_Store = class {
 		}
 	}
 
-	subscribe(fn) {
+	subscribe(fn: (change: StoreChange) => void): () => void {
 		this._listeners.add(fn);
-		return () => this._listeners.delete(fn);
+		return () => {
+			this._listeners.delete(fn);
+		};
 	}
 
-	has(id) {
+	has(id: string | null | undefined): boolean {
 		return !!id && this._groups.has(id);
 	}
 
-	get(id) {
+	get(id: string | null | undefined): Group | null {
 		return (id && this._groups.get(id)) || null;
 	}
 
-	all() {
+	all(): Group[] {
 		return [...this._groups.values()];
 	}
 
-	create({ title = '', color } = {}) {
+	create({ title = '', color }: { title?: string; color?: string } = {}): Group {
 		let id = 'g' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-		let group = {
+		let group: Group = {
 			id,
 			title,
-			color: ZTG_Model.COLORS.includes(color) ? color : ZTG_Model.pickColor(this.all().map(g => g.color)),
+			color: (COLORS as readonly string[]).includes(color as string) ? color as GroupColor : pickColor(this.all().map(g => g.color)),
 			collapsed: false,
 		};
 		this._groups.set(id, group);
@@ -122,16 +139,21 @@ var ZTG_Store = class {
 		return group;
 	}
 
-	update(id, patch) {
+	update(id: string, patch: Partial<Omit<Group, 'id'>>): Group | null {
 		let g = this._groups.get(id);
 		if (!g) return null;
 		let changed = false;
-		for (let key of ['title', 'color', 'collapsed']) {
-			if (key in patch && g[key] !== patch[key]) {
-				if (key === 'color' && !ZTG_Model.COLORS.includes(patch.color)) continue;
-				g[key] = key === 'collapsed' ? !!patch[key] : patch[key];
-				changed = true;
-			}
+		if ('title' in patch && g.title !== patch.title) {
+			g.title = patch.title as string;
+			changed = true;
+		}
+		if ('color' in patch && g.color !== patch.color && (COLORS as readonly string[]).includes(patch.color as string)) {
+			g.color = patch.color as GroupColor;
+			changed = true;
+		}
+		if ('collapsed' in patch && g.collapsed !== !!patch.collapsed) {
+			g.collapsed = !!patch.collapsed;
+			changed = true;
 		}
 		if (changed) {
 			this._scheduleSave();
@@ -140,7 +162,7 @@ var ZTG_Store = class {
 		return g;
 	}
 
-	remove(id) {
+	remove(id: string): void {
 		let g = this._groups.get(id);
 		if (!g) return;
 		this._groups.delete(id);
@@ -149,11 +171,8 @@ var ZTG_Store = class {
 		this._emit({ type: 'remove', id });
 	}
 
-	/**
-	 * Bring a recently removed group back (e.g. when its tabs are reopened)
-	 * @returns {boolean}
-	 */
-	resurrect(id) {
+	/** Bring a recently removed group back (e.g. when its tabs are reopened) */
+	resurrect(id: string): boolean {
 		if (this._groups.has(id)) return true;
 		let g = this._graveyard.get(id);
 		if (!g) return false;
@@ -163,4 +182,4 @@ var ZTG_Store = class {
 		this._emit({ type: 'create', id });
 		return true;
 	}
-};
+}

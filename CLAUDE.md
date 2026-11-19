@@ -12,42 +12,54 @@ Zotero 10 is pinned: `strict_min_version` is `10.0` and `strict_max_version` is 
 
 ```sh
 npm install
-npm test            # unit tests for the pure model (node:test), fast, no browser
+npm run typecheck   # tsc over src/ (no emit)
+npm test            # unit tests (node:test via tsx): model, store, and a smoke test of the built bundle. Fast, no browser
 npm run test:ui     # builds test/harness/dist/, then runs browser tests (Playwright + Chromium)
-npm run build       # packages src/ into build/zotero-tab-groups-<version>.xpi
+npm run build       # bundles src/content/*.ts and packages build/zotero-tab-groups-<version>.xpi
 ```
 
-- `test:ui` `require`s `playwright`, but `playwright` is **not** listed in `package.json` or `package-lock.json`. Before running it, install it (`npm install --no-save playwright && npx playwright install chromium`). Do not assume it is already available.
-- `npm run build` uses the system `zip` if present and otherwise falls back to a built-in zip writer, so it works on Windows without extra tools.
-- Passing `npm test` and `npm run test:ui` is the bar for changes to `src/content/model.js` or the controller. Run both before saying a change works. The browser harness is Chromium, not Gecko, so anything touching Zotero-only APIs (`Zotero.MenuManager`, `Zotero.Prefs`, `Services`) must also be checked inside Zotero.
+- `test:ui` uses `playwright`, a devDependency pinned to a minor version (`~1.63.0`). It needs a matching Chromium: `npx playwright install chromium`. In Claude Code cloud sessions a Chromium is preinstalled, and the pin matches it; if you bump `playwright`, the preinstalled browser may no longer match.
+- `npm run build` stages the static files of `src/` plus an esbuild bundle in `build/stage/`, then zips it. It uses the system `zip` if present and otherwise falls back to a built-in zip writer, so it works on Windows without extra tools.
+- Passing `npm test` and `npm run test:ui` (plus `npm run typecheck`) is the bar for changes to `src/content/`. Run all three before saying a change works. The browser harness is Chromium, not Gecko, so anything touching Zotero-only APIs (`Zotero.MenuManager`, `Zotero.Prefs`, `Services`) must also be checked inside Zotero.
 
 ## Layout
 
 ```
 src/
-  bootstrap.js            lifecycle: startup/shutdown/uninstall, window load/unload hooks
+  bootstrap.js            lifecycle: startup/shutdown/uninstall, window load/unload hooks (classic script, not bundled)
   manifest.json           add-on manifest (id, version, Zotero compatibility range)
   prefs.js                default prefs (groups JSON pref)
-  content/model.js        PURE logic: membership normalization, color picking, drop math
-  content/store.js        group metadata store (title/color/collapsed), prefs-backed, debounced writes
-  content/controller.js   per-window integration: hooks Zotero_Tabs, decorates the tab strip, drag, editor bubble
-  content/plugin.js       ZoteroTabGroups entry object: shared store, context menu, window management
-  content/tabGroups.css   all group styling, keyed on ztg-* attributes
+  types/zotero.d.ts       minimal types for the Zotero globals the plugin uses
+  content/index.ts        bundle entry; exports `plugin`
+  content/plugin.ts       TabGroupsPlugin: shared store, window management
+  content/menu.ts         tab context menu (Zotero.MenuManager)
+  content/model.ts        PURE logic: membership normalization, color picking, drop math
+  content/store.ts        group metadata store (title/color/collapsed), prefs-backed, debounced writes
+  content/zoteroTabs.ts   adapter: the ONLY file that touches Zotero_Tabs internals and monkey-patches it
+  content/controller.ts   per-window WindowController: wiring, membership rules, group actions, strip events
+  content/decorate.ts     Decorator: MutationObserver, ztg-* attributes, group chips
+  content/drag.ts         DragController: pointer-driven dragging (pending -> dragging -> settling)
+  content/editor.ts       EditorBubble: name/color/ungroup/close popover
+  content/tabGroups.css   all group styling, keyed on ztg-* attributes (shipped as is)
   locale/en-US/*.ftl      Fluent strings
 test/
-  model.test.js           unit tests for model.js (require()s it directly)
+  model.test.js           unit tests for model.ts
+  store.test.js           unit tests for store.ts
+  bundle.test.js          builds the bundle and loads it as a classic script in a vm sandbox
   ui.test.js              Playwright tests against the harness, real mouse input
-  harness/                builds Zotero's real TabBar.jsx + a Zotero_Tabs stand-in into dist/
+  harness/                builds Zotero's real TabBar.jsx + a Zotero_Tabs stand-in + the plugin's TS sources into dist/
 scripts/build.js          .xpi packager
 updates.json              Zotero auto-update manifest
 ```
 
 ## Architecture notes
 
-- **Load order and globals.** `bootstrap.js` loads `model.js`, `store.js`, `controller.js`, `plugin.js` into the add-on scope with `Services.scriptloader.loadSubScript`. The files in `src/content/` are classic scripts, not ES modules. They share state through globals (`ZTG_Model`, `ZTG_Store`, `ZTG_WindowController`, `ZoteroTabGroups`). Do not add `import`/`export` syntax to anything in `src/`. Keep the `/* global ... */` and `/* exported ... */` header comments up to date.
-- **`model.js` must stay pure.** No DOM, no `Zotero`, no `Services`. It also has a CommonJS `module.exports` fallback so `test/model.test.js` can load it in Node. Put any new membership or drop logic here so it can be unit-tested.
-- **Membership lives on tabs.** Each tab stores its group as `tab.data.tabGroupId`. Zotero already saves `tab.data` in its session file, so membership survives restarts and crashes with no extra storage. Group metadata (`title`, `color`, `collapsed`) lives separately in the pref `extensions.zotero-tab-groups.groups` as JSON, managed by `ZTG_Store`.
-- **Rules run in `_update()`.** The controller wraps `Zotero_Tabs._update()` so `ZTG_Model.normalize` runs before every React render. This covers every way a tab can move, not only drag-and-drop.
+- **TypeScript, bundled.** `src/content/*.ts` are ES modules. `scripts/build.js` bundles them with esbuild (IIFE, global `ZTG_Bundle`, target `firefox115`) into one `content/plugin.js` in the xpi. `bootstrap.js` stays a classic script (Zotero reads `startup`/`shutdown` from its scope), loads that bundle with `Services.scriptloader.loadSubScript`, and uses `ZTG_Bundle.plugin`. The `.ts` files and `src/types/` are not shipped. There are no runtime dependencies.
+- **`model.ts` must stay pure.** No DOM, no `Zotero`, no `Services`, no imports from other plugin files except types. Put any new membership or drop logic here so it can be unit-tested in Node.
+- **All Zotero_Tabs internals go through `zoteroTabs.ts`.** `_tabs`, `_selectedID`, `_prevSelectedID`, `_update`, the patched methods and `tabHooks` live only there. If a Zotero update changes `tabs.js`, fix that file.
+- **Controller parts.** `WindowController` owns `Decorator`, `DragController` and `EditorBubble` and passes itself to them. They use its public members (`store`, `zt`, `setTimeout`, `logError`, `batch`, ...), not each other's privates.
+- **Membership lives on tabs.** Each tab stores its group as `tab.data.tabGroupId`. Zotero already saves `tab.data` in its session file, so membership survives restarts and crashes with no extra storage. Group metadata (`title`, `color`, `collapsed`) lives separately in the pref `extensions.zotero-tab-groups.groups` as JSON, managed by `Store` (`store.ts`).
+- **Rules run in `_update()`.** The controller wraps `Zotero_Tabs._update()` so `Model.normalize` runs before every React render. This covers every way a tab can move, not only drag-and-drop.
 - **Decoration is after commit.** A MutationObserver adds the chip elements and sets `ztg-*` attributes (and `ztg-hidden` on tabs of collapsed groups) on Zotero's own tab elements. Don't edit Zotero's React output in other ways. The plugin should disappear completely when disabled.
 - **Dragging is custom.** Zotero's HTML5 tab drag is replaced with pointer-event dragging. Drop positions are computed once at drag start (`computeDrop`), and tabs move with CSS transforms until drop.
 - **Context menu** uses Zotero's `Zotero.MenuManager` API (target `main/tab`). It exists only inside Zotero, not in the harness.
@@ -55,17 +67,17 @@ updates.json              Zotero auto-update manifest
 
 ## Test harness
 
-- `test/harness/build-harness.js` bundles `entry.jsx` with esbuild. It stubs `./icons` with `icons-stub.jsx`, compiles `vendor/_tabBar.scss` with sass, and copies the plugin's `model.js`, `store.js`, `controller.js`, and `tabGroups.css` into `dist/` **unmodified**. Keep the plugin source free of harness-only hacks. Put test-only behavior in the harness.
-- `entry.jsx` exposes `window.__ztg` (controller and store) and `window.__ready`, which the UI tests use.
+- `test/harness/build-harness.js` bundles `entry.jsx` with esbuild. `entry.jsx` imports the plugin's real `store.ts` and `controller.ts`. It stubs `./icons` with `icons-stub.jsx`, compiles `vendor/_tabBar.scss` with sass, and copies `tabGroups.css` into `dist/` **unmodified**. Keep the plugin source free of harness-only hacks. Put test-only behavior in the harness.
+- `entry.jsx` exposes `window.__ztg` (controller and store; tests read `controller.drag.state` for the drag in progress) and `window.__ready`, which the UI tests use.
 - `zotero-tabs-shim.js` is a stand-in for Zotero's `tabs.js`. If plugin code depends on a `Zotero_Tabs` method that the shim lacks, add it to the shim and note in the shim header which `tabs.js` behavior it mirrors.
 - `test/harness/vendor/` contains Zotero source (AGPL, © Corporation for Digital Scholarship). Do not edit those files. Replace them only by re-vendoring from a specific Zotero commit and updating `ZOTERO_COMMIT`.
 - `dist/` and `test/output/` are generated and git-ignored. Set `SHOTS=<dir>` to save screenshots from the UI tests.
 
 ## Conventions
 
-- JavaScript: tab indentation, single quotes, `'use strict'` inside IIFEs and CommonJS files, semicolons. Match the style of the file you are editing.
+- TypeScript (`src/content/`, strict) and JavaScript (`bootstrap.js`, scripts, tests): tab indentation, single quotes, `'use strict'` in CommonJS files, semicolons. Match the style of the file you are editing.
 - Node scripts (`scripts/`, `test/harness/build-harness.js`, tests) are CommonJS (`require`).
-- Keep the plugin dependency-free at runtime. The only runtime artifacts are the files under `src/`. The npm devDependencies are for building and testing only.
+- Keep the plugin dependency-free at runtime. The shipped artifacts are the static files under `src/` plus the esbuild bundle. The npm devDependencies are for building and testing only.
 - Line endings are LF (`.gitattributes` enforces `eol=lf`). `.png` and `.xpi` are binary.
 - Commit messages are short imperative or descriptive subject lines in the style of `git log`.
 

@@ -1,4 +1,4 @@
-/* global Zotero, Services */
+/* global Zotero, Services, ZTG_Bundle */
 /* exported install, startup, shutdown, uninstall, onMainWindowLoad, onMainWindowUnload */
 
 var ZoteroTabGroups;
@@ -10,9 +10,9 @@ const REASON_ADDON_UNINSTALL = 6;
 function install() {}
 
 async function startup({ id, version, rootURI }) {
-	for (let file of ['model.js', 'store.js', 'controller.js', 'plugin.js']) {
-		Services.scriptloader.loadSubScript(rootURI + 'content/' + file);
-	}
+	// content/plugin.js is the esbuild bundle of src/content/*.ts (see scripts/build.js)
+	Services.scriptloader.loadSubScript(rootURI + 'content/plugin.js');
+	ZoteroTabGroups = ZTG_Bundle.plugin;
 	ZoteroTabGroups.init({ id, version, rootURI });
 	ZoteroTabGroups.addToAllWindows();
 }
@@ -39,6 +39,7 @@ function shutdown(data, reason) {
 function uninstall(data, reason) {
 	if (reason === REASON_ADDON_UNINSTALL && typeof Zotero !== 'undefined') {
 		try {
+			// Same key as PREF_GROUPS in content/plugin.ts (the bundle isn't loaded here)
 			Zotero.Prefs.clear('extensions.zotero-tab-groups.groups', true);
 		}
 		catch (e) {

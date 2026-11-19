@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 /*
  * Builds test/harness/dist/: Zotero's TabBar component + stand-in Zotero_Tabs
- * (bundled with esbuild), Zotero's tab bar styles (compiled with sass), and
- * the plugin's own content scripts and stylesheet, loaded unmodified.
+ * (bundled with esbuild together with the plugin's TypeScript sources),
+ * Zotero's tab bar styles (compiled with sass), and the plugin's own
+ * stylesheet, copied unmodified.
  */
 'use strict';
 const fs = require('fs');
@@ -59,9 +60,7 @@ await esbuild.build({
 let scss = '@mixin inactive-opacity {}\n' + fs.readFileSync(path.join(here, 'vendor/_tabBar.scss'), 'utf8');
 fs.writeFileSync(path.join(dist, 'tabbar.css'), sass.compileString(scss).css);
 
-for (let f of ['model.js', 'store.js', 'controller.js', 'tabGroups.css']) {
-	fs.copyFileSync(path.join(root, 'src/content', f), path.join(dist, f));
-}
+fs.copyFileSync(path.join(root, 'src/content/tabGroups.css'), path.join(dist, 'tabGroups.css'));
 fs.copyFileSync(path.join(here, 'index.html'), path.join(dist, 'index.html'));
 console.log('Harness built in', path.relative(root, dist));
 })().catch((e) => {
