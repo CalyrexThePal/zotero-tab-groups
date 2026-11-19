@@ -29,7 +29,6 @@ var ZTG_WindowController = (function () {
 
 	const HTML_NS = 'http://www.w3.org/1999/xhtml';
 	const LIBRARY_TAB_ID = 'zotero-pane';
-	const DRAG_THRESHOLD = 4;
 	const AUTOSCROLL_ZONE = 28;
 	const AUTOSCROLL_MAX_SPEED = 14;
 	const COLLAPSE_ANIMATION_MS = 220;
@@ -69,7 +68,7 @@ var ZTG_WindowController = (function () {
 
 			for (let name of [
 				'_onMutations', '_onPointerDown', '_onPointerMove', '_onPointerUp',
-				'_onDragStart', '_onMouseDown', '_onClick', '_onContextMenu', '_onKeyDown', '_onDragKeyDown',
+				'_onDragStart', '_onMouseDown', '_onClick', '_onContextMenu', '_onKeyDown', '_onDragKeyDown', '_onDragWheel',
 				'_dragFrame', '_onEditorDocPointerDown', '_onEditorKeyDown', '_onWindowBlur',
 			]) {
 				this[name] = this[name].bind(this);
@@ -897,6 +896,8 @@ var ZTG_WindowController = (function () {
 
 		_onPointerDown(e) {
 			if (e.button !== 0 || this._drag || this._pending) return;
+			// Ctrl+click is a right click on macOS (trackpad secondary click)
+			if (e.ctrlKey) return;
 			let strip = this._getStrip();
 			if (!strip || !strip.contains(e.target)) return;
 			let header = this._headerFromEvent(e);
@@ -924,7 +925,7 @@ var ZTG_WindowController = (function () {
 				if (e.pointerId !== this._pending.pointerId) return;
 				let dx = e.clientX - this._pending.x;
 				let dy = e.clientY - this._pending.y;
-				if (Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) return;
+				if (!ZTG_Model.exceedsDragThreshold(dx, dy)) return;
 				if (!this._beginDrag()) {
 					this._pending = null;
 					this._removePointerListeners();
@@ -948,6 +949,16 @@ var ZTG_WindowController = (function () {
 				}, 0);
 				this._finishDrag(e.type === 'pointerup');
 			}
+		}
+
+		_onDragWheel(e) {
+			// A resting second finger or trackpad momentum scrolls the strip
+			// under the held tab, and drop positions (computed at drag start)
+			// would drift from what's on screen. Autoscroll is the only scroll.
+			// Zotero's own wheel handler scrolls from JS, so stop it too.
+			if (!this._drag) return;
+			e.preventDefault();
+			e.stopPropagation();
 		}
 
 		_onDragKeyDown(e) {
@@ -1071,6 +1082,7 @@ var ZTG_WindowController = (function () {
 				// pointer capture is a nicety, not a requirement
 			}
 			this.win.addEventListener('keydown', this._onDragKeyDown, true);
+			strip.addEventListener('wheel', this._onDragWheel, { capture: true, passive: false });
 			this._drag.frame = this.win.requestAnimationFrame(this._dragFrame);
 			this._updateDrag();
 			return true;
@@ -1171,6 +1183,7 @@ var ZTG_WindowController = (function () {
 			if (!d) return;
 			this.win.cancelAnimationFrame(d.frame);
 			this.win.removeEventListener('keydown', this._onDragKeyDown, true);
+			d.strip.removeEventListener('wheel', this._onDragWheel, true);
 			if (d.pointerId !== undefined) {
 				try {
 					d.strip.releasePointerCapture(d.pointerId);

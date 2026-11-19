@@ -143,3 +143,10 @@ test('insertionAnchor maps headers to their first tab', () => {
 	assert.equal(M.insertionAnchor(strip(), 0), 't1');
 	assert.equal(M.insertionAnchor(strip(), 5), null);
 });
+
+test('exceedsDragThreshold: only horizontal travel starts a drag', () => {
+	assert.equal(M.exceedsDragThreshold(M.DRAG_THRESHOLD - 1, 0), false);
+	assert.equal(M.exceedsDragThreshold(-M.DRAG_THRESHOLD, 0), true);
+	// a finger rolling down as it presses a trackpad is not a drag
+	assert.equal(M.exceedsDragThreshold(1, 30), false);
+});
